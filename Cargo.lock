@@ -1129,9 +1129,12 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
+ "blake3",
  "history",
  "ignore",
  "protocol",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]

@@ -12,4 +12,16 @@
                     anchor="right"
                     factoryClass="dev.flow.ui.WorkbenchToolWindowFactory" />
     </extensions>
+
+    <actions>
+        <action id="Flow.Spikes.HistoricalDiff"
+                class="dev.flow.spikes.HistoricalDiffProbeAction"
+                text="Flow Compatibility: Historical Diffs" />
+        <action id="Flow.Spikes.Merge"
+                class="dev.flow.spikes.MergeProbeAction"
+                text="Flow Compatibility: Native Merge" />
+        <action id="Flow.Spikes.ProcessLifecycle"
+                class="dev.flow.spikes.ProcessLifecycleProbeAction"
+                text="Flow Compatibility: Process Lifecycle" />
+    </actions>
 </idea-plugin>

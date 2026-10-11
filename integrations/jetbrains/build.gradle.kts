@@ -30,3 +30,9 @@ intellijPlatform {
         }
     }
 }
+
+tasks.runIde {
+    if (providers.gradleProperty("flowCompatibilitySpikes").orNull == "true") {
+        jvmArgs("-Dflow.compatibility.spikes=true")
+    }
+}

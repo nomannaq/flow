@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/engine/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/history/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/protocol/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/runtime/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/runtime/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

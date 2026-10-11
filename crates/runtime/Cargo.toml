@@ -14,5 +14,11 @@ protocol.workspace = true
 tokio = { workspace = true, features = ["process", "io-util", "sync", "time"] }
 tracing.workspace = true
 
+[dev-dependencies]
+blake3.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
 [lints]
 workspace = true

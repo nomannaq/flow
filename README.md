@@ -132,6 +132,19 @@ milestones.
 
 ## Development
 
+### Compatibility experiments
+
+B01 adds an ACP SDK probe and optional native diff, merge, and process-lifecycle
+actions. Run the local adapter fixture without model credentials:
+
+```sh
+python3 scripts/spikes/check_acp_probe.py
+```
+
+See the [compatibility runbook](docs/compatibility-spikes.md) for real-adapter
+commands, IDE actions, observed results, and remaining feasibility checks. These
+experiments are separate from the production engine; G0 is still pending.
+
 ### Rust engine
 
 Install Rust through rustup and a native C/C++ toolchain for bundled SQLite,
