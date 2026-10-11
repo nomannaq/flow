@@ -1,0 +1,15 @@
+<idea-plugin>
+    <id>dev.flow.workbench</id>
+    <name>Flow</name>
+    <vendor>Flow</vendor>
+    <description><![CDATA[
+        A native agent workbench for reviewing coding-agent changes.
+    ]]></description>
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Flow"
+                    anchor="right"
+                    factoryClass="dev.flow.ui.WorkbenchToolWindowFactory" />
+    </extensions>
+</idea-plugin>
