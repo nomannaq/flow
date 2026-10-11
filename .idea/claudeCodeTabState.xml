@@ -8,9 +8,10 @@
             <TabSessionState>
               <option name="projectPath" value="$PROJECT_DIR$" />
               <option name="provider" value="codex" />
+              <option name="sessionId" value="01a12c08-a4a5-7333-bef0-4a7958c59334" />
               <option name="cwd" value="$PROJECT_DIR$" />
-              <option name="model" value="gpt-5.6-sol" />
-              <option name="permissionMode" value="default" />
+              <option name="model" value="gpt-6-astra" />
+              <option name="permissionMode" value="bypassPermissions" />
             </TabSessionState>
           </value>
         </entry>
