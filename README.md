@@ -132,6 +132,18 @@ milestones.
 
 ## Development
 
+### Build foundation (B02)
+
+B02 adds macOS arm64 CI, a registered engine integration test, Kotlin formatting,
+strict Gradle dependency locking and Plugin Verifier against the pinned IDE.
+The host baseline build passed: Kotlin formatting, three native tests, plugin
+packaging and Plugin Verifier against IDEA IU-253.33813.55. Gradle's lockfile and
+checksum metadata are generated, and strict verification without generation
+flags now passes. The first clean-checkout CI run remains pending; see the
+[build foundation setup](docs/build-foundation.md) for commands and evidence.
+The two outstanding B01 checks remain tracked separately; proceeding with build
+infrastructure does not declare G0 complete.
+
 ### Compatibility experiments
 
 B01 adds an ACP SDK probe, 17 fixture experiments, native diff/merge assertions,
@@ -154,6 +166,7 @@ BLAKE3 and zstd. `rust-toolchain.toml` selects Rust 1.99.0 with rustfmt and Clip
 cargo build --workspace --locked
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 cargo run -p engine --locked
 ```
 
@@ -169,7 +182,7 @@ Kotlin stdlib and coroutines; the plugin does not bundle another copy.
 
 ```sh
 cd integrations/jetbrains
-./gradlew buildPlugin verifyPluginProjectConfiguration
+./gradlew check buildPlugin verifyPluginProjectConfiguration verifyPlugin
 ./gradlew runIde
 ```
 
@@ -187,8 +200,10 @@ checked. The development plugin has launched in IDEA 2025.3.6.1; manual historic
 diff, merge Apply/Cancel and project-close cleanup checks passed. All three native
 tests and the plugin ZIP build passed on the user's host; configuration verification
 completed with an intentional 253-only compatibility warning. Real Codex session
-creation, cancellation acknowledgement and two sequential edits with historical
-checkpoints passed; the edits required a per-run `gpt-6-astra` override. Dedicated
-shell/background checks with that override and plugin-unload cleanup remain pending.
+creation, cancellation acknowledgement, sequential edits and shell/background probes
+all passed with a per-run `gpt-6-astra` override. The
+[six-case report](docs/b01-host-real-astra-evidence.json) preserves the results;
+the background case verifies final contents, not every intermediate write.
+Plugin-unload cleanup and adapter release provenance remain pending before G0.
 Gradle's local lock-coordination socket is blocked in the assistant's
 execution environment; run native validation commands in your Mac's Terminal.

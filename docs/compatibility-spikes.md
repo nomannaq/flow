@@ -1,11 +1,11 @@
 # B01: architecture compatibility experiments
 
 Branch deliverable: `chore/architecture-compatibility-spikes`.
-Recorded 2026-10-12. Status: **native tests/build, manual diff/merge/project-close cleanup and real two-edit capture passed; real shell/background and plugin-unload checks pending; G0 has not passed**.
+Recorded 2026-10-12. Status: **all six real-adapter probes, native tests/build and manual diff/merge/project-close cleanup passed; plugin-unload cleanup and adapter release provenance remain pending before G0**.
 
 These are development probes, separate from the production engine. They exercise
 the selected SDK and native APIs before Flow implements sessions and persistence.
-The implementation plan remains uncommitted.
+This evidence update does not commit the implementation plan.
 
 The [current fixture evidence](b01-fixture-evidence.json) contains 17 checked
 experiments, checkpoint contents and SHA-256 fingerprints of the probe sources.
@@ -19,7 +19,8 @@ pass. Edit, shell and background prompts fail with RPC code -32603 before any to
 call or completed turn is reported. Only the baseline checkpoint exists. The old
 report discarded error details, so it cannot distinguish authentication, model,
 HTTP or connection failures. It predates the new `errorCategory` diagnostic field;
-its original source fingerprints are retained. The cause remains unconfirmed.
+its original source fingerprints are retained. Later diagnostics and a model
+override resolved the prompt failure as described below.
 The subsequent [successful host edit evidence](b01-host-edit-evidence.json) uses
 the same adapter with the per-run override `-c 'model="gpt-6-astra"'`. Both turns
 complete, one-time permissions are granted and all three exact checkpoints are
@@ -27,6 +28,19 @@ preserved. The earlier inherited `gpt-6.1-sol` request returned HTTP 400 with
 `not supported` and `chatgpt` signals. Changing the model resolved this edit
 failure on the tested host; it does not establish general model availability or
 compatibility across accounts. Global Codex configuration was not changed.
+The [complete successful host suite](b01-host-real-astra-evidence.json), recorded
+at `2026-10-12T09:55:10.682915+00:00`, passes initialization, session creation,
+edit, shell, background and cancellation. Its source fingerprints were verified
+against the B01 probe, runner, fixture and Cargo.lock when saved. B02 subsequently
+adds an engine test dependency to Cargo.lock; the B01 report remains immutable.
+The user's command supplied
+`-c 'model="gpt-6-astra"'`; the runner does not itself record adapter arguments.
+Both edit and shell cases retain exact checkpoints 0, 1 and 2 and two one-time
+permission grants. Background retains checkpoints 0 and 2 with
+`changedAfterTurn=false`: final contents are proven, intermediate and post-turn
+writes are not. Cancellation proves acknowledgement, not termination of an
+already-running shell. Existing credentials successfully support real inference;
+a fresh browser/device login has not been exercised.
 The [earlier evidence bundle](compatibility-evidence.json) remains an archive of
 the first nine reports; it is not the current implementation's acceptance result.
 
@@ -53,7 +67,9 @@ shapes and explicit continue/narrow/stop decisions.
 | Installed Codex adapter session creation | Pass on user's host | The assistant-environment panic is absent in the user's Terminal run |
 | Real cancellation | Acknowledgement passed | Cancellation returns within approximately one second; no running shell tool was observed, so shell termination is not proven |
 | Real two-edit prompt | Pass with gpt-6-astra override | Two completed turns, one-time permissions and exact checkpoints 0, 1 and 2 verified from host files |
-| Real shell/background prompts | Pending with gpt-6-astra override | Earlier runs with the inherited model failed; rerun the full suite with the same successful per-run model override |
+| Real shell prompt | Pass with gpt-6-astra override | Two turns, one-time permissions and exact checkpoints 0, 1 and 2 |
+| Real background prompt | Pass within the probe's observation envelope | Final checkpoint 2 captured; no intermediate checkpoint 1 or post-turn change observed |
+| Existing agent authentication | Pass on user's host | Real inference and writing succeed; fresh login remains fixture-only coverage |
 | Pinned Gradle/plugin build | Pass on user's host, configuration warning retained | Plugin ZIP produced; verification reports the intentional until-build=253.* limit. No cross-version Plugin Verifier pass is claimed |
 | Native historical diff and merge assertions | Pass | Test XML confirms three tests, zero failures/errors/skips |
 | Native UI and disposal | Manual diff, resolved/cancelled merge and project-close cleanup passed | Screenshots confirm diff and merge behavior; IDE log confirms cleanup before the fixture's natural exit. Plugin-unload cleanup remains pending |
@@ -95,10 +111,10 @@ the deliberately narrow `253.*` range until later IDE builds are validated.
 Building the ZIP does not establish fresh-install acceptance or Plugin Verifier
 compatibility across other builds.
 
-Fixture success does not establish real-agent authentication, writing, cancellation,
-or precise tool attribution. No real edit was observed during this run. The
-development target is macOS arm64 and IntelliJ IDEA 2025.3.6.1; release support
-remains conditional on actually building and exercising that combination.
+The real suite establishes writing and existing-authentication behavior on the
+tested macOS arm64 host. Neither it nor the native fixtures establish exact tool
+attribution, durable production history or complete workspace capture. Release
+support remains subject to the later packaged acceptance milestone.
 
 ## Run the ACP experiments
 
@@ -153,7 +169,9 @@ or session creation fails:
 python3 scripts/spikes/check_acp_probe.py \
   --adapter /absolute/path/to/codex-acp \
   --sha256 027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524 \
-  --allow-once --timeout-seconds 120 --output /tmp/flow-b01-real.json
+  --adapter-arg=-c \
+  --adapter-arg='model="gpt-6-astra"' \
+  --allow-once --timeout-seconds 120 --output /tmp/flow-b01-real-astra.json
 ```
 
 That digest identifies the observed 0.5.2 sample only. A different verified release
@@ -163,8 +181,9 @@ are modified by the runner itself.
 
 The probe uses existing agent authentication unless `--auth-method ID` is supplied.
 Only an ID advertised by initialization is accepted. The adapter performs the
-authentication; Flow does not collect tokens. Browser/device authentication and
-real model calls have not been validated here. Executable arguments follow the
+authentication; Flow does not collect tokens. Fresh browser/device login has
+not been validated here; model calls using existing credentials
+have passed. Executable arguments follow the
 executable after `--`; file arguments should be absolute because the adapter
 starts in the scratch directory.
 
@@ -233,7 +252,8 @@ A supplementary source compilation succeeded against installed RustRover
 RR-262.10968.211 using cached Kotlin 2.1.20 with metadata-version checking disabled.
 This checks basic API call shapes only. It is **not** pinned Kotlin 2.2.20/IDEA 253
 compilation, Gradle configuration validation, Plugin Verifier evidence, or a UI
-test. The installed runtime is JBR 25; no registered JDK 21 was found.
+test. This was an earlier bootstrap check, superseded by the pinned native build
+and JDK 21 evidence above.
 
 ## Decisions and remaining risks
 
@@ -248,12 +268,13 @@ test. The installed runtime is JBR 25; no registered JDK 21 was found.
 - **Capture confidence:** these are completed-turn checkpoints of one known UTF-8
   file. They do not prove exact tool boundaries, complete-workspace reconciliation,
   detection of transient writes, or quiescence after background commands. The
-  background experiment demonstrates why turn completion is insufficient.
+  fixture background experiment demonstrates why turn completion is insufficient;
+  the real background run observed only the final state at turn completion.
   The files are retained evidence, not the durable immutable history store from
   B04/B09. Limit initial claims accordingly.
 - **Native APIs:** use the platform's immutable diff inputs, merge callback and
-  injected project-service coroutine scope. Finish the manual checks before
-  considering those APIs proven for the pinned target.
+  injected project-service coroutine scope. Diff/merge and project-close behavior
+  are proven on the pinned target; plugin-unload cleanup remains to be observed.
 - **Adapter provenance:** the existing local Zed-managed binary reports `0.5.2`;
   SHA-256 is `027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524`.
   It is an observed compatibility sample, not yet the approved release adapter.
@@ -263,23 +284,24 @@ test. The installed runtime is JBR 25; no registered JDK 21 was found.
   verified. Exclude those packages rather than assume compatibility. Keep direct
   v1 Client for V1, stable MCP transport for B17, and both unstable features off.
 
-Remaining acceptance work requires the intended host: obtain and record the exact
-JDK 21/IDEA build, verify the adapter release provenance, resolve or avoid the
-observed `system-configuration` panic, run the real authentication/edit/shell/
-background/cancellation checks, and exercise the native actions. Time-box each
-remaining spike to the plan's two engineering days before recording a scope
-decision. Do not mark G0 complete based on the fixture alone.
+Remaining acceptance work is adapter release provenance and plugin-unload cleanup
+on the pinned IDE. The tested workflow uses an already-authenticated adapter;
+fresh browser/device login remains owned by the external agent and is not claimed
+as a completed Flow experiment. Active-shell cancellation and post-turn background
+capture remain limitations of the real evidence, with deterministic fixture
+coverage and production follow-up in B08/B09. Time-box each remaining investigation
+to the plan's two engineering days before a scope decision. G0 remains open.
 
 ## B01 acceptance checklist
 
 | Plan requirement | Implemented or investigated | Required before closure |
 | --- | --- | --- |
-| Version pins, SDK/Tokio example, lifecycle and licenses | Locked Rust graph, SDK source revision, native tooling pins, adapter sample digest and fixture evidence recorded | Verify adapter release provenance and record exact JDK vendor/patch plus extracted IDEA build |
+| Version pins, SDK/Tokio example, lifecycle and licenses | Locked Rust graph, SDK revision, native pins, exact JDK/IDE builds and adapter sample digest recorded | Verify adapter release provenance |
 | Proxy/Conductor/cookbook/RMCP/polyfill/test inventory | ADR records verified surfaces, version mismatches and explicit exclusions | No new B01 production dependency; matching optional manifests are rechecked only if later adopted |
-| One IDE/OS target and launch procedure | macOS arm64 / IDEA 2025.3.6.1 selected; repeatable commands documented | Actually launch the pinned build on that host |
-| Historical diff, merge-result retrieval, disposal and background process behavior | Shared native fixtures, three platform tests, three opt-in actions | Run platform tests and observe the native UI, project close and plugin unload |
-| Codex auth, prompts, permissions, edits, shell, overlapping writes and cancellation | 17 fixture cases pass; host session creation and cancellation acknowledgement pass | Diagnose real prompt failures; retain successful real writing and permission evidence |
-| Time box, capture envelope and risk decision | ADR records continue/narrow/stop decisions and two-day maximum per remaining investigation | G0 stays blocked while core real-agent/native evidence is missing |
+| One IDE/OS target and launch procedure | macOS arm64 / IDEA 2025.3.6.1 launched; repeatable commands documented | Complete for the selected target |
+| Historical diff, merge-result retrieval, disposal and background process behavior | Three platform tests, manual diff/merge and project-close cleanup passed | Observe plugin-unload cleanup |
+| Codex auth, prompts, permissions, edits, shell, overlapping writes and cancellation | 17 fixture cases and six real probes pass; existing authentication and real permission grants verified | Complete within the stated capture and cancellation limits; no fresh-login claim |
+| Time box, capture envelope and risk decision | ADR records continue/narrow/stop decisions and two-day maximum per remaining investigation | Close provenance and unload checks before G0 |
 
 ## Dependency evidence
 

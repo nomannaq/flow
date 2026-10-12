@@ -1,7 +1,8 @@
 # ADR 0001: B01 agent and host boundaries
 
 Date: 2026-10-12. Decision: continue the architecture with a narrow macOS target;
-keep G0 blocked until real-agent and pinned native-platform checks pass.
+keep G0 open for adapter release provenance and plugin-unload cleanup. All six
+real-adapter probes and the pinned native tests/build now pass.
 
 ## Selected compatibility target
 
@@ -106,16 +107,15 @@ cleanup is not an OS security sandbox.
 Native diff and merge actions share their fixture construction with three platform
 tests. Those tests assert historical contents, exact resolved merge output and no
 accepted content on cancellation. The process action uses a project-service
-coroutine scope and bounded cleanup. Project close and plugin unload still need
-interactive observation, including confirming the process exits before its
-natural 60-second timeout.
+coroutine scope and bounded cleanup. Project-close cleanup was observed before
+the process's natural 60-second timeout; plugin unload remains to be observed.
 
 **Continue** the direct SDK/native UI architecture. **Narrow** support to the
 target and capture envelope above, with interval attribution. **Stop claiming G0
-completion** until the real adapter performs two observed edits and the pinned
-native build demonstrates diff, merge and lifecycle behavior.
+completion** until adapter release provenance and plugin-unload cleanup are
+verified. The real two-edit and native diff/merge/project-close checks have passed.
 
-The real adapter's handshake succeeds, but its worker reports a
+In the assistant environment the real adapter's handshake succeeds, but its worker reports a
 `system-configuration` panic while creating a session. The probe now detects the
 Rust panic header, cancels the pending probe and invokes SDK process cleanup;
 the report classifies this as `adapter_panic` instead of a timeout. This does not
@@ -132,15 +132,20 @@ and produced the plugin ZIP. Configuration verification completed with a warning
 about our deliberate `253.*` compatibility limit; retain that limit. Plugin-unload
 cleanup remains pending; see the compatibility runbook for artifact fingerprints.
 
-The same adapter creates sessions and acknowledges cancellation in the user's
-Terminal, but edit/shell/background prompts fail with RPC -32603 before reported
-tool execution. Session creation alone does not verify model authentication.
-Existing redacted reports lack the error detail required to establish the cause;
-the probe now classifies RPC message/data without persisting raw payloads.
+The user's full host suite now passes all six cases with the same adapter and
+the per-run override `-c 'model="gpt-6-astra"'`; see the
+[retained report](../b01-host-real-astra-evidence.json). Earlier inherited-model
+requests returned HTTP 400 with `not supported` and `chatgpt` signals. The override
+resolved the tested prompt failures without changing global configuration.
+Existing authentication, real inference, one-time permissions and exact edit/shell
+checkpoints 0, 1 and 2 are verified. Background retained only checkpoints 0 and 2
+and observed no post-turn changes. Cancellation confirms acknowledgement, not
+termination of an already-running shell. Fresh login remains fixture coverage;
+the initial supported workflow uses an already-authenticated external adapter.
 
-Next validation must run on the intended host with that JDK/IDE and an authenticated
-released adapter. Retain real reports, the plugin test XML, exact runtime/build
-identifiers, and native action observations. Each remaining external investigation
+Next validate plugin-unload cleanup on the pinned host and the adapter's upstream
+release provenance. Real reports, plugin test fingerprints, exact runtime/build
+identifiers and native observations are retained in the runbook. Each remaining investigation
 keeps the plan's maximum of two engineering days before a continue/narrow/stop
 decision. This environment's reproducible blockers do not justify replacing
 real-agent or native evidence with fixture results.
