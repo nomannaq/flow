@@ -134,7 +134,7 @@ milestones.
 
 ### Compatibility experiments
 
-B01 adds an ACP SDK probe, 16 fixture experiments, native diff/merge assertions,
+B01 adds an ACP SDK probe, 17 fixture experiments, native diff/merge assertions,
 and optional IDE lifecycle actions. Run the local adapter fixture without model credentials:
 
 ```sh
@@ -184,7 +184,11 @@ plan remain required. No agents or credentials are installed by these commands.
 
 Rust workspace compilation, formatting, Clippy, and bootstrap execution have been
 checked. The development plugin has launched in IDEA 2025.3.6.1; manual historical
-diff, merge Apply/Cancel and project-close cleanup checks passed. Automated native
-tests, packaged build validation, plugin-unload cleanup and real-agent execution
-remain pending. Gradle's local lock-coordination socket is blocked in the assistant's
+diff, merge Apply/Cancel and project-close cleanup checks passed. All three native
+tests and the plugin ZIP build passed on the user's host; configuration verification
+completed with an intentional 253-only compatibility warning. Real Codex session
+creation, cancellation acknowledgement and two sequential edits with historical
+checkpoints passed; the edits required a per-run `gpt-6-astra` override. Dedicated
+shell/background checks with that override and plugin-unload cleanup remain pending.
+Gradle's local lock-coordination socket is blocked in the assistant's
 execution environment; run native validation commands in your Mac's Terminal.

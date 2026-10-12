@@ -1,0 +1,531 @@
+{
+  "evidenceSource": "User Terminal run; report and checkpoint files inspected locally",
+  "modelOverrideFromUserCommand": "gpt-6-astra",
+  "report": {
+    "mode": "edit",
+    "status": "passed",
+    "errorCode": null,
+    "failureReason": null,
+    "errorCategory": null,
+    "httpError": null,
+    "sdkVersion": "3.3.0",
+    "protocol": "stable-v1",
+    "allowOnce": true,
+    "timeoutSeconds": 120,
+    "elapsedMs": 18681,
+    "parentDirectoryUnchanged": true,
+    "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+    "traceMayBeTruncated": false,
+    "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+    "events": [
+      {
+        "event": "initialize.sent"
+      },
+      {
+        "event": "initialized",
+        "protocolVersion": 1,
+        "agentInfo": {
+          "name": "codex-acp",
+          "version": "0.5.2"
+        },
+        "capabilities": {
+          "loadSession": false,
+          "image": true,
+          "audio": false,
+          "embeddedContext": true,
+          "mcpHttp": true,
+          "mcpSse": false
+        },
+        "authMethods": [
+          "chatgpt",
+          "codex-api-key",
+          "openai-api-key"
+        ]
+      },
+      {
+        "event": "session.new.sent"
+      },
+      {
+        "event": "adapter.stderr",
+        "category": "connection_error",
+        "panic": false,
+        "nullObject": false,
+        "elapsedMs": 74
+      },
+      {
+        "event": "session.created"
+      },
+      {
+        "event": "checkpoint",
+        "snapshot": {
+          "sequence": 0,
+          "blob": "checkpoint-0.txt",
+          "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+        }
+      },
+      {
+        "event": "session.update",
+        "kind": "other",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "tool_call",
+        "status": "in_progress",
+        "toolCallIdHash": "ff23e3867930b28f5244c1c0cd8e2b91d5d0820f8707fedf4500a25b56019adb"
+      },
+      {
+        "event": "permission.requested",
+        "decision": "allow_once"
+      },
+      {
+        "event": "session.update",
+        "kind": "tool_call_update",
+        "status": "completed",
+        "toolCallIdHash": "ff23e3867930b28f5244c1c0cd8e2b91d5d0820f8707fedf4500a25b56019adb"
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "turn.completed",
+        "stopReason": "end_turn"
+      },
+      {
+        "event": "checkpoint",
+        "snapshot": {
+          "sequence": 1,
+          "blob": "checkpoint-1.txt",
+          "blake3": "16aeaeba9fcf0e88f18fc2f6b7421d5a931b69bd1dd643537f14834d4832aa1e"
+        }
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "tool_call",
+        "status": "in_progress",
+        "toolCallIdHash": "4f30a2c930e35dff50ff5aa0fb6fd060e7c4be5d4ee218572d297cc0c960a583"
+      },
+      {
+        "event": "permission.requested",
+        "decision": "allow_once"
+      },
+      {
+        "event": "session.update",
+        "kind": "tool_call_update",
+        "status": "completed",
+        "toolCallIdHash": "4f30a2c930e35dff50ff5aa0fb6fd060e7c4be5d4ee218572d297cc0c960a583"
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "session.update",
+        "kind": "agent_message_chunk",
+        "status": null,
+        "toolCallIdHash": null
+      },
+      {
+        "event": "turn.completed",
+        "stopReason": "end_turn"
+      },
+      {
+        "event": "checkpoint",
+        "snapshot": {
+          "sequence": 2,
+          "blob": "checkpoint-2.txt",
+          "blake3": "03ab191cdb1cd9718095cc13d866954f88fedc9346537ccf283dfb08fcb21b84"
+        }
+      }
+    ]
+  },
+  "checkpointContents": {
+    "checkpoint-0.txt": "flow-probe-0\n",
+    "checkpoint-1.txt": "flow-probe-1\n",
+    "checkpoint-2.txt": "flow-probe-2\n"
+  }
+}

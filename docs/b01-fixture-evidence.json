@@ -8,11 +8,13 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 30,
+        "elapsedMs": 29,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -51,11 +53,13 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 26,
+        "elapsedMs": 27,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -100,11 +104,16 @@
         "status": "failed",
         "errorCode": -32000,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "authentication",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 26,
+        "elapsedMs": 29,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -146,11 +155,16 @@
         "status": "failed",
         "errorCode": -32000,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "authentication",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 25,
+        "elapsedMs": 28,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -186,17 +200,85 @@
       "checkpointContents": {},
       "processCleanup": "verified"
     },
+    "prompt-error-redaction": {
+      "report": {
+        "mode": "edit",
+        "status": "failed",
+        "errorCode": -32603,
+        "failureReason": "rpc_or_probe_error",
+        "errorCategory": "authentication",
+        "httpError": {
+          "status": 401,
+          "signals": [
+            "unauthorized"
+          ]
+        },
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": false,
+        "timeoutSeconds": 30,
+        "elapsedMs": 29,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "flow-fixture",
+              "version": "1"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": false,
+              "audio": false,
+              "embeddedContext": false,
+              "mcpHttp": false,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "fixture"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      },
+      "processCleanup": "verified"
+    },
     "two-edits": {
       "report": {
         "mode": "edit",
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": true,
         "timeoutSeconds": 30,
-        "elapsedMs": 29,
+        "elapsedMs": 30,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -327,11 +409,16 @@
         "status": "failed",
         "errorCode": -32603,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "checkpoint_mismatch",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 28,
+        "elapsedMs": 31,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -406,11 +493,16 @@
         "status": "failed",
         "errorCode": -32603,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "checkpoint_mismatch",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": true,
         "timeoutSeconds": 30,
-        "elapsedMs": 26,
+        "elapsedMs": 30,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -491,6 +583,8 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": true,
@@ -620,11 +714,13 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": true,
         "timeoutSeconds": 30,
-        "elapsedMs": 3068,
+        "elapsedMs": 3065,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -694,7 +790,7 @@
           },
           {
             "event": "checkpoint",
-            "sample": 6,
+            "sample": 5,
             "snapshot": {
               "sequence": 1,
               "blob": "checkpoint-1.txt",
@@ -730,11 +826,13 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 1033,
+        "elapsedMs": 1035,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -801,11 +899,13 @@
         "status": "timed_out",
         "errorCode": null,
         "failureReason": "timeout",
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 3,
-        "elapsedMs": 3006,
+        "elapsedMs": 3003,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -869,11 +969,16 @@
         "status": "failed",
         "errorCode": -32603,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "other",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 36,
+        "elapsedMs": 34,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -893,11 +998,16 @@
         "status": "failed",
         "errorCode": -32603,
         "failureReason": "adapter_panic",
+        "errorCategory": "adapter_panic",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 20,
-        "elapsedMs": 27,
+        "elapsedMs": 23,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -933,14 +1043,14 @@
             "category": "system_configuration",
             "panic": true,
             "nullObject": false,
-            "elapsedMs": 27
+            "elapsedMs": 23
           },
           {
             "event": "adapter.stderr",
             "category": "other",
             "panic": false,
             "nullObject": true,
-            "elapsedMs": 27
+            "elapsedMs": 23
           },
           {
             "event": "adapter.panic"
@@ -956,6 +1066,8 @@
         "status": "timed_out",
         "errorCode": null,
         "failureReason": "timeout",
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
@@ -980,11 +1092,16 @@
         "status": "failed",
         "errorCode": -32603,
         "failureReason": "rpc_or_probe_error",
+        "errorCategory": "other",
+        "httpError": {
+          "status": null,
+          "signals": []
+        },
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 29,
+        "elapsedMs": 31,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -1023,11 +1140,13 @@
         "status": "passed",
         "errorCode": null,
         "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
         "sdkVersion": "3.3.0",
         "protocol": "stable-v1",
         "allowOnce": false,
         "timeoutSeconds": 30,
-        "elapsedMs": 26,
+        "elapsedMs": 25,
         "parentDirectoryUnchanged": true,
         "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": false,
@@ -1041,14 +1160,14 @@
             "category": "permission_denied",
             "panic": false,
             "nullObject": false,
-            "elapsedMs": 25
+            "elapsedMs": 24
           },
           {
             "event": "adapter.stderr",
             "category": "adapter_panic",
             "panic": false,
             "nullObject": false,
-            "elapsedMs": 25
+            "elapsedMs": 24
           },
           {
             "event": "initialized",
@@ -1075,12 +1194,12 @@
       "processCleanup": "verified"
     }
   },
-  "recordedAt": "2026-10-11T21:40:45.331106+00:00",
+  "recordedAt": "2026-10-12T09:48:22.089691+00:00",
   "sourceSha256": {
     "Cargo.lock": "26365a63f147a0738d68bb9c91298149429403048815041ebe9ae9e266cc4344",
-    "crates/runtime/examples/acp_probe.rs": "4048fdb258743c491ea9ea0870194e64c55b6e133e5dc577f0df8b9d04359bf9",
-    "scripts/spikes/fixture_agent.py": "12736a94d087abef028a8c2d2c6fbcd5a7ae482c0c563205671d35d34d5a7475",
-    "scripts/spikes/check_acp_probe.py": "de482e5daec5b5e8da26d6ab2d418819df202e3eed19b352c4fff4cef64a60da"
+    "crates/runtime/examples/acp_probe.rs": "2e042d99eb3a346061f94e071f1d69683cd340d9832ded93f10565266d626327",
+    "scripts/spikes/fixture_agent.py": "a91eeed9552afb2304ff5f9aa9d1adb9ecfcf8e890b9317472760ee6d9d11cca",
+    "scripts/spikes/check_acp_probe.py": "a557ca88fe6d4e78cd218abe4a867b666241f7fb2ab9547dddf5ef8d3fd6472d"
   },
   "suitePassed": true
 }

@@ -71,8 +71,33 @@ fn diagnostic(line: &str) -> &'static str {
     } else if text.contains("unauthorized")
         || text.contains("authentication")
         || text.contains("not logged in")
+        || text.contains("invalid_api_key")
+        || text.contains("token_expired")
     {
         "authentication"
+    } else if text.contains("rate limit")
+        || text.contains("rate_limit")
+        || text.contains("insufficient_quota")
+    {
+        "rate_limit_or_quota"
+    } else if text.contains("model_not_found") || text.contains("unsupported model") {
+        "model_unavailable"
+    } else if text.contains("unexpected status") || text.contains("status code:") {
+        "http_error"
+    } else if text.contains("stream disconnected") || text.contains("stream closed") {
+        "stream_disconnected"
+    } else if text.contains("error sending request")
+        || text.contains("connection refused")
+        || text.contains("connection reset")
+        || text.contains("connect error")
+    {
+        "connection_error"
+    } else if text.contains("certificate") || text.contains("tls error") {
+        "tls_error"
+    } else if text.contains("unexpected checkpoint content")
+        || text.contains("unexpected background content")
+    {
+        "checkpoint_mismatch"
     } else if text.contains("timed out") || text.contains("timeout") {
         "timeout"
     } else if text.contains("unknown variant")
@@ -91,6 +116,51 @@ fn diagnostic(line: &str) -> &'static str {
     } else {
         "other"
     }
+}
+
+fn http_error_details(text: &str) -> Value {
+    let text = text.to_ascii_lowercase();
+    let status = ["unexpected status", "status code", "http status"]
+        .into_iter()
+        .find_map(|marker| {
+            text.match_indices(marker).find_map(|(position, _)| {
+                let tail = text[position + marker.len()..].trim_start_matches([' ', ':', '=']);
+                let digits: String = tail.chars().take_while(char::is_ascii_digit).collect();
+                (digits.len() == 3)
+                    .then(|| digits.parse::<u16>().ok())
+                    .flatten()
+                    .filter(|code| (100..=599).contains(code))
+            })
+        });
+    // Only fixed diagnostic signals leave this function, never server-supplied text.
+    let signals: Vec<_> = [
+        "invalid_api_key",
+        "token_expired",
+        "invalid_request_error",
+        "unsupported_value",
+        "unsupported_parameter",
+        "model_not_found",
+        "rate_limit_exceeded",
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "usage_limit_reached",
+        "slow_down",
+        "server_is_overloaded",
+        "unauthorized",
+        "forbidden",
+        "not supported",
+        "does not exist",
+        "not found",
+        "invalid model",
+        "chatgpt",
+        "cloudflare",
+        "access denied",
+        "bad gateway",
+    ]
+    .into_iter()
+    .filter(|signal| text.contains(signal))
+    .collect();
+    json!({"status": status, "signals": signals})
 }
 
 fn checkpoint(workspace: &Path, evidence: &Path, sequence: usize) -> Result<Value, Error> {
@@ -416,6 +486,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(Err(error)) => Some(error.code),
         _ => None,
     };
+    // Classify RPC error data as well as stderr; never persist the raw payload.
+    let (error_category, http_error) = match &result {
+        Ok(Err(error)) => {
+            let details = format!(
+                "{} {}",
+                error.message,
+                error
+                    .data
+                    .as_ref()
+                    .map(Value::to_string)
+                    .unwrap_or_default()
+            );
+            (
+                Some(diagnostic(&details)),
+                Some(http_error_details(&details)),
+            )
+        }
+        _ => (None, None),
+    };
     let events = trace.lock().expect("trace lock poisoned");
     let failure_reason = if events.iter().any(|event| event["event"] == "adapter.panic") {
         Some("adapter_panic")
@@ -428,7 +517,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let report = json!({
         "mode": mode, "status": status, "errorCode": error_code,
-        "failureReason": failure_reason,
+        "failureReason": failure_reason, "errorCategory": error_category,
+        "httpError": http_error,
         "sdkVersion": "3.3.0", "protocol": "stable-v1", "allowOnce": allow_once,
         "timeoutSeconds": timeout_seconds,
         "elapsedMs": started.elapsed().as_millis(),
@@ -445,7 +535,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("adapter panicked; probe stopped and SDK subprocess cleanup ran; inspect report.json for redacted diagnostics".into());
     }
     if status != "passed" || !parent_directory_unchanged {
-        return Err("probe failed; inspect report.json (raw adapter errors omitted to avoid credential leakage)".into());
+        if let Some(details) = &http_error {
+            eprintln!("HTTP diagnostics: {details}");
+        }
+        return Err(format!("probe failed ({}); inspect report.json (raw adapter errors omitted to avoid credential leakage)", error_category.unwrap_or("timeout_or_lifecycle")).into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{diagnostic, http_error_details};
+
+    #[test]
+    fn http_details_keep_status_and_fixed_signals_only() {
+        let details = http_error_details(
+            r#"stream disconnected: unexpected status 400 Bad Request: {"error":{"code":"unsupported_value","message":"Model private-fixture-token is not supported with ChatGPT"}}"#,
+        );
+        assert_eq!(details["status"], 400);
+        assert_eq!(
+            details["signals"],
+            serde_json::json!(["unsupported_value", "not supported", "chatgpt"])
+        );
+        assert!(!details.to_string().contains("private-fixture-token"));
+        assert_eq!(http_error_details("status code: 429")["status"], 429);
+        for text in [
+            "unexpected status 4000",
+            "unexpected status 999",
+            "request id 401",
+            "unclassified secret",
+        ] {
+            assert!(http_error_details(text)["status"].is_null());
+        }
+    }
+
+    #[test]
+    fn diagnostics_classify_errors_without_returning_payloads() {
+        for (message, expected) in [
+            (
+                "stream disconnected: unexpected status 401 Unauthorized secret",
+                "authentication",
+            ),
+            ("unexpected status 400 Bad Request secret", "http_error"),
+            ("model_not_found secret", "model_unavailable"),
+            ("insufficient_quota secret", "rate_limit_or_quota"),
+            (
+                "stream disconnected before completion secret",
+                "stream_disconnected",
+            ),
+            ("error sending request for url secret", "connection_error"),
+            ("invalid certificate secret", "tls_error"),
+            ("unexpected checkpoint content", "checkpoint_mismatch"),
+            ("unclassified private-fixture-token", "other"),
+        ] {
+            assert_eq!(diagnostic(message), expected);
+        }
+    }
 }

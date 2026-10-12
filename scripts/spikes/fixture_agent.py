@@ -66,6 +66,13 @@ for line in sys.stdin:
             raise RuntimeError("session and process working directories differ")
         respond(request_id, {"sessionId": "fixture"})
     elif method == "session/prompt":
+        if "--prompt-error" in sys.argv:
+            send({"id": request_id, "error": {
+                "code": -32603, "message": "Internal error", "data": {
+                    "details": "stream disconnected: unexpected status 401 Unauthorized private-fixture-token",
+                },
+            }})
+            continue
         prompt = message["params"]["prompt"][0]["text"]
         update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "fixture output"}})
         if "waits 30 seconds" in prompt:

@@ -79,6 +79,10 @@ def run(label, mode, flags=(), fixture_flags=(), expected="passed"):
                 time.sleep(0.05)
         evidence["experiments"][label]["processCleanup"] = "verified"
     reason = f" ({report['failureReason']})" if report.get("failureReason") else ""
+    if report.get("errorCategory"):
+        reason += f" [{report['errorCategory']}]"
+    if http_status := (report.get("httpError") or {}).get("status"):
+        reason += f" HTTP {http_status}"
     print(f"{label}: {report['status']}{reason}; {report_path}", flush=True)
     if expected is not None:
         assert report["status"] == expected, label
@@ -90,6 +94,10 @@ def fixture_suite():
     run("authenticate", "auth", ("--auth-method", "fixture"))
     run("authentication-rejected", "auth", ("--auth-method", "fixture"), ("--reject-auth",), "failed")
     run("session-needs-auth", "session", fixture_flags=("--needs-auth",), expected="failed")
+    _, report = run("prompt-error-redaction", "edit", fixture_flags=("--prompt-error",), expected="failed")
+    assert report["errorCategory"] == "authentication"
+    assert report["httpError"]["status"] == 401
+    assert report["httpError"]["signals"] == ["unauthorized"]
     report_path, report = run("two-edits", "edit", ("--allow-once", "--auth-method", "fixture"), ("--needs-auth",))
     events = report["events"]
     assert sum(event["event"] == "permission.requested" for event in events) == 2

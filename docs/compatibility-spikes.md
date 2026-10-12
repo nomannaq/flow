@@ -1,18 +1,32 @@
 # B01: architecture compatibility experiments
 
 Branch deliverable: `chore/architecture-compatibility-spikes`.
-Recorded 2026-10-12. Status: **manual native diff/merge and project-close cleanup passed; automated native and real-agent acceptance pending; G0 has not passed**.
+Recorded 2026-10-12. Status: **native tests/build, manual diff/merge/project-close cleanup and real two-edit capture passed; real shell/background and plugin-unload checks pending; G0 has not passed**.
 
 These are development probes, separate from the production engine. They exercise
 the selected SDK and native APIs before Flow implements sessions and persistence.
 The implementation plan remains uncommitted.
 
-The [current fixture evidence](b01-fixture-evidence.json) contains 16 checked
+The [current fixture evidence](b01-fixture-evidence.json) contains 17 checked
 experiments, checkpoint contents and SHA-256 fingerprints of the probe sources.
-The [current real-adapter evidence](b01-real-evidence.json) records successful
+The [earlier assistant-environment evidence](b01-real-evidence.json) records successful
 initialization followed by an immediate `adapter_panic` failure and classified
 adapter diagnostics. The probe now stops on Rust panic headers even when the
 adapter process stays alive, instead of waiting for the request timeout.
+The [host real-adapter evidence](b01-host-real-evidence.json) records the user's
+later Terminal run: initialization, session creation and cancellation acknowledgement
+pass. Edit, shell and background prompts fail with RPC code -32603 before any tool
+call or completed turn is reported. Only the baseline checkpoint exists. The old
+report discarded error details, so it cannot distinguish authentication, model,
+HTTP or connection failures. It predates the new `errorCategory` diagnostic field;
+its original source fingerprints are retained. The cause remains unconfirmed.
+The subsequent [successful host edit evidence](b01-host-edit-evidence.json) uses
+the same adapter with the per-run override `-c 'model="gpt-6-astra"'`. Both turns
+complete, one-time permissions are granted and all three exact checkpoints are
+preserved. The earlier inherited `gpt-6.1-sol` request returned HTTP 400 with
+`not supported` and `chatgpt` signals. Changing the model resolved this edit
+failure on the tested host; it does not establish general model availability or
+compatibility across accounts. Global Codex configuration was not changed.
 The [earlier evidence bundle](compatibility-evidence.json) remains an archive of
 the first nine reports; it is not the current implementation's acceptance result.
 
@@ -36,9 +50,12 @@ shapes and explicit continue/narrow/stop decisions.
 | Invalid protocol, ignored cancellation and stderr | Pass with fixture | Wrong versions fail, ignored cancellation remains bounded, and a sentinel secret never enters the report |
 | Worker panic without process exit | Pass with fixture | Reports `adapter_panic` before the timeout and cleans up the adapter and descendant; ordinary log messages mentioning a panic do not terminate the probe |
 | Installed Codex adapter initialization | Pass | `codex-acp` reports version `0.5.2`, negotiates v1 and advertises authentication methods |
-| Installed Codex adapter session creation | Blocked | A worker reports a macOS `system-configuration` panic during `session/new`; Flow now reports `adapter_panic` immediately. This fixes the probe hang, not the external adapter's panic. |
-| Pinned Gradle/plugin build | Development launch passed; automated tests and package checks pending | User launched the compiled plugin on IDEA IU-253.33813.55; no native test XML or packaged ZIP found. Assistant execution still cannot create Gradle's lock-coordination socket |
-| Native historical diff and merge assertions | Implemented; execution blocked | Three platform tests exercise the same fixture construction as the native actions; the pinned Gradle build cannot start here |
+| Installed Codex adapter session creation | Pass on user's host | The assistant-environment panic is absent in the user's Terminal run |
+| Real cancellation | Acknowledgement passed | Cancellation returns within approximately one second; no running shell tool was observed, so shell termination is not proven |
+| Real two-edit prompt | Pass with gpt-6-astra override | Two completed turns, one-time permissions and exact checkpoints 0, 1 and 2 verified from host files |
+| Real shell/background prompts | Pending with gpt-6-astra override | Earlier runs with the inherited model failed; rerun the full suite with the same successful per-run model override |
+| Pinned Gradle/plugin build | Pass on user's host, configuration warning retained | Plugin ZIP produced; verification reports the intentional until-build=253.* limit. No cross-version Plugin Verifier pass is claimed |
+| Native historical diff and merge assertions | Pass | Test XML confirms three tests, zero failures/errors/skips |
 | Native UI and disposal | Manual diff, resolved/cancelled merge and project-close cleanup passed | Screenshots confirm diff and merge behavior; IDE log confirms cleanup before the fixture's natural exit. Plugin-unload cleanup remains pending |
 
 ### Native host evidence, 2026-10-12
@@ -62,7 +79,21 @@ records IDEA **IU-253.33813.55**, running on JetBrains Runtime
 Cleanup occurred after 47.209 seconds, before the 60-second natural exit.
 Plugin-unload cleanup is a separate pending check. The installed JDK and IDE
 remove the earlier missing-installation blocker; the assistant's socket restriction
-persists. No automated native test pass is inferred from the successful IDE launch.
+persists. A subsequent host build independently produced the native test XML:
+`build/test-results/test/TEST-dev.flow.spikes.NativeCompatibilityTest.xml`,
+timestamp `2026-10-12T09:39:27.458Z`, three tests with zero failures, errors or skips.
+All artifact paths here are relative to `integrations/jetbrains`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Native test XML | `8fc1855635233e5a696323d962d0d4889a51b5fd57507902780774fdc658e05b` |
+| `build/distributions/flow-jetbrains-0.1.0.zip` | `3e1eecb52dd1b96c53ee7df2a5da423f2a0d215bd50311d2473e8703c5209af9` |
+
+The user reported `BUILD SUCCESSFUL` for tests, `buildPlugin` and
+`verifyPluginProjectConfiguration`. The latter warns about `until-build`; retain
+the deliberately narrow `253.*` range until later IDE builds are validated.
+Building the ZIP does not establish fresh-install acceptance or Plugin Verifier
+compatibility across other builds.
 
 Fixture success does not establish real-agent authentication, writing, cancellation,
 or precise tool attribution. No real edit was observed during this run. The
@@ -77,7 +108,7 @@ From the repository root, with Rust, Python 3 and system Git available:
 python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b01-fixtures.json
 ```
 
-This builds the Cargo example and runs 16 experiments against a local fixture.
+This builds the Cargo example and runs 17 experiments against a local fixture.
 It requires no model credentials. Use Python 3.11+ for the evidence runner.
 The launcher and lifecycle checks target POSIX, initially
 macOS. Every invocation prints a path to `report.json` in a retained temporary
@@ -145,6 +176,21 @@ trace is bounded to 1,024 events and reports possible truncation. Stderr is redu
 to fixed diagnostic categories and panic/null-object booleans, never raw text. Keep the
 checkpoint files with their report when preserving evidence; remove the printed
 temporary directory when it is no longer needed.
+
+Failed reports now include `errorCategory`, derived from both the RPC error message
+and data using the same fixed categories as stderr. It is a diagnostic hint, not
+a confirmed root cause. Raw error data, credentials, URLs and response bodies are
+not persisted. The fixture suite checks classification of a nested RPC error and
+redaction of a sentinel secret even when no stderr is emitted.
+
+The subsequent host edit probe `flow-acp-probe-QKdm70` narrowed the failure to
+`http_error`, still without a reported tool call. This is not evidence of a bad
+login or unavailable model. Reports now also include `httpError.status` and fixed
+`httpError.signals`, printed on failure, so a retry can distinguish the HTTP status
+and recognized rejection terms without retaining arbitrary response text. The
+previous reports cannot be retroactively enriched because raw errors were omitted.
+HTTP statuses alone can have multiple causes; interpret them alongside the response
+signals using the [official OpenAI error guidance](https://developers.openai.com/api/docs/guides/error-codes).
 
 ## Run the native IDE experiments
 
@@ -232,7 +278,7 @@ decision. Do not mark G0 complete based on the fixture alone.
 | Proxy/Conductor/cookbook/RMCP/polyfill/test inventory | ADR records verified surfaces, version mismatches and explicit exclusions | No new B01 production dependency; matching optional manifests are rechecked only if later adopted |
 | One IDE/OS target and launch procedure | macOS arm64 / IDEA 2025.3.6.1 selected; repeatable commands documented | Actually launch the pinned build on that host |
 | Historical diff, merge-result retrieval, disposal and background process behavior | Shared native fixtures, three platform tests, three opt-in actions | Run platform tests and observe the native UI, project close and plugin unload |
-| Codex auth, prompts, permissions, edits, shell, overlapping writes and cancellation | All probe modes and real evidence runner implemented; 16 fixture cases pass | Resolve the real adapter panic and retain successful real-agent reports |
+| Codex auth, prompts, permissions, edits, shell, overlapping writes and cancellation | 17 fixture cases pass; host session creation and cancellation acknowledgement pass | Diagnose real prompt failures; retain successful real writing and permission evidence |
 | Time box, capture envelope and risk decision | ADR records continue/narrow/stop decisions and two-day maximum per remaining investigation | G0 stays blocked while core real-agent/native evidence is missing |
 
 ## Dependency evidence
