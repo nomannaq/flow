@@ -21,7 +21,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
-abstract class CompatibilityProbeAction : AnAction(), DumbAware {
+abstract class CompatibilityProbeAction :
+    AnAction(),
+    DumbAware {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(event: AnActionEvent) {
