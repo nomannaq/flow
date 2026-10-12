@@ -1,0 +1,87 @@
+name: Build foundation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust and ACP fixtures (macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check selected architecture and install pinned Rust
+        run: |
+          test "$(uname -m)" = arm64
+          rustup show
+      - run: cargo fmt --all --check
+      - run: cargo build --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --all-targets --locked
+      - name: Run registered engine integration target explicitly
+        run: cargo test -p engine --test bootstrap --locked
+      - name: Run ACP protocol fixtures without credentials
+        run: python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b01-fixtures.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acp-fixture-results
+          path: /tmp/flow-b01-fixtures.json
+
+  jetbrains:
+    name: Native plugin (IDEA 253, macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: integrations/jetbrains
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21.0.12.1'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Require reviewed dependency state
+        run: |
+          test "$(uname -m)" = arm64
+          test -s gradle.lockfile
+          test -s gradle/verification-metadata.xml
+      - name: Formatting, native tests, build and pinned Plugin Verifier
+        run: ./gradlew check buildPlugin verifyPluginProjectConfiguration verifyPlugin --dependency-verification=strict --console=plain
+      - name: Require discovered and passing native tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          reports = list(Path('build/test-results/test').glob('TEST-*.xml'))
+          assert reports, 'No native test reports discovered'
+          suites = [ET.parse(path).getroot() for path in reports]
+          assert sum(int(s.attrib['tests']) for s in suites) >= 3, 'Expected at least the three compatibility tests'
+          for suite in suites:
+              assert all(int(suite.attrib.get(key, 0)) == 0 for key in ('failures', 'errors', 'skipped')), suite.attrib
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-validation-reports
+          path: |
+            integrations/jetbrains/build/reports/
+            integrations/jetbrains/build/test-results/
+          retention-days: 14
+    # Development ZIP is built for verification only; publishing belongs to B28.
