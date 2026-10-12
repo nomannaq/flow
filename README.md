@@ -134,11 +134,11 @@ milestones.
 
 ### Compatibility experiments
 
-B01 adds an ACP SDK probe and optional native diff, merge, and process-lifecycle
-actions. Run the local adapter fixture without model credentials:
+B01 adds an ACP SDK probe, 16 fixture experiments, native diff/merge assertions,
+and optional IDE lifecycle actions. Run the local adapter fixture without model credentials:
 
 ```sh
-python3 scripts/spikes/check_acp_probe.py
+python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b01-fixtures.json
 ```
 
 See the [compatibility runbook](docs/compatibility-spikes.md) for real-adapter
@@ -183,5 +183,8 @@ release compatibility. SDK integration probes and packaged acceptance from the
 plan remain required. No agents or credentials are installed by these commands.
 
 Rust workspace compilation, formatting, Clippy, and bootstrap execution have been
-checked. Plugin compilation and IDE launch remain unverified because the bootstrap
-environment blocked Gradle's local lock-coordination socket.
+checked. The development plugin has launched in IDEA 2025.3.6.1; manual historical
+diff, merge Apply/Cancel and project-close cleanup checks passed. Automated native
+tests, packaged build validation, plugin-unload cleanup and real-agent execution
+remain pending. Gradle's local lock-coordination socket is blocked in the assistant's
+execution environment; run native validation commands in your Mac's Terminal.

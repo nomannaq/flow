@@ -5,11 +5,13 @@ use agent_client_protocol::schema::v1::{
     RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, StopReason,
     TextContent,
 };
-use agent_client_protocol::{AcpAgent, AcpAgentConfig, Agent, Client, ConnectionTo, Error};
+use agent_client_protocol::{
+    AcpAgent, AcpAgentConfig, Agent, Client, ConnectionTo, Error, LineDirection,
+};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 type Trace = Arc<Mutex<Vec<Value>>>;
 
@@ -17,6 +19,77 @@ fn record(trace: &Trace, event: Value) {
     let mut events = trace.lock().expect("trace lock poisoned");
     if events.len() < 1024 {
         events.push(event);
+    }
+}
+
+fn launch(mut arguments: impl Iterator<Item = String>) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::process::CommandExt;
+
+    let workspace = arguments.next().ok_or("missing launcher workspace")?;
+    let executable = arguments.next().ok_or("missing launcher executable")?;
+    let allowed = [
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "CODEX_HOME",
+        "CODEX_SANDBOX",
+        "CODEX_SANDBOX_NETWORK_DISABLED",
+        "__CF_USER_TEXT_ENCODING",
+        "CODEX_API_KEY",
+        "OPENAI_API_KEY",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+    ];
+    let environment = allowed
+        .into_iter()
+        .filter_map(|name| std::env::var_os(name).map(|value| (name, value)));
+    let error = std::process::Command::new(executable)
+        .args(arguments)
+        .current_dir(workspace)
+        .env_clear()
+        .envs(environment)
+        .exec();
+    Err(error.into())
+}
+
+fn diagnostic(line: &str) -> &'static str {
+    let text = line.to_ascii_lowercase();
+    if text.contains("operation not permitted") || text.contains("permission denied") {
+        "permission_denied"
+    } else if text.contains("failed to resolve")
+        || text.contains("dns error")
+        || text.contains("network is unreachable")
+    {
+        "network_unavailable"
+    } else if text.contains("unauthorized")
+        || text.contains("authentication")
+        || text.contains("not logged in")
+    {
+        "authentication"
+    } else if text.contains("timed out") || text.contains("timeout") {
+        "timeout"
+    } else if text.contains("unknown variant")
+        || text.contains("invalid value")
+        || text.contains("unknown field")
+    {
+        "incompatible_configuration"
+    } else if text.contains("no such file") {
+        "missing_file"
+    } else if text.contains("system-configuration") {
+        "system_configuration"
+    } else if text.contains("panicked") {
+        "adapter_panic"
+    } else if text.contains("config") {
+        "configuration"
+    } else {
+        "other"
     }
 }
 
@@ -62,7 +135,15 @@ async fn probe(
                     Some("plan") => "plan",
                     _ => "other",
                 };
-                record(&updates, json!({"event": "session.update", "kind": kind}));
+                let status = match update["status"].as_str() {
+                    Some("pending") => Some("pending"),
+                    Some("in_progress") => Some("in_progress"),
+                    Some("completed") => Some("completed"),
+                    Some("failed") => Some("failed"),
+                    _ => None,
+                };
+                let tool_id = update["toolCallId"].as_str().map(|id| blake3::hash(id.as_bytes()).to_hex().to_string());
+                record(&updates, json!({"event": "session.update", "kind": kind, "status": status, "toolCallIdHash": tool_id}));
                 Ok(())
             },
             agent_client_protocol::on_receive_notification!(),
@@ -96,6 +177,14 @@ async fn probe(
                 "event": "initialized",
                 "protocolVersion": initialized.protocol_version,
                 "agentInfo": initialized.agent_info.as_ref().map(|info| json!({"name": info.name, "version": info.version})),
+                "capabilities": {
+                    "loadSession": initialized.agent_capabilities.load_session,
+                    "image": initialized.agent_capabilities.prompt_capabilities.image,
+                    "audio": initialized.agent_capabilities.prompt_capabilities.audio,
+                    "embeddedContext": initialized.agent_capabilities.prompt_capabilities.embedded_context,
+                    "mcpHttp": initialized.agent_capabilities.mcp_capabilities.http,
+                    "mcpSse": initialized.agent_capabilities.mcp_capabilities.sse
+                },
                 "authMethods": initialized.auth_methods.iter().map(|method| method.id()).collect::<Vec<_>>()
             }));
             if initialized.protocol_version != ProtocolVersion::V1 {
@@ -109,8 +198,12 @@ async fn probe(
                 if !advertised {
                     return Err(Error::internal_error().data("authentication method not advertised"));
                 }
+                record(&trace, json!({"event": "authenticate.sent"}));
                 connection.send_request(AuthenticateRequest::new(method)).block_task().await?;
                 record(&trace, json!({"event": "authenticated"}));
+            }
+            if mode == "auth" {
+                return Ok(());
             }
             record(&trace, json!({"event": "session.new.sent"}));
             let session = connection
@@ -118,7 +211,47 @@ async fn probe(
                 .block_task()
                 .await?;
             record(&trace, json!({"event": "session.created"}));
+            if mode == "session" {
+                return Ok(());
+            }
             record(&trace, json!({"event": "checkpoint", "snapshot": checkpoint(&workspace, &evidence, 0)?}));
+            if mode == "background" {
+                let response = connection.send_request(PromptRequest::new(
+                    session.session_id.clone(),
+                    vec![ContentBlock::Text(TextContent::new(
+                        "In this disposable repository, run this exact shell command to start two overlapping writers, then finish your turn immediately without waiting: \
+                         (sleep 1; printf 'flow-probe-1\\n' > first.tmp; mv first.tmp probe.txt) & \
+                         (sleep 2; printf 'flow-probe-2\\n' > second.tmp; mv second.tmp probe.txt) & \
+                         Do not change any other files."
+                    ))],
+                )).block_task().await?;
+                if response.stop_reason != StopReason::EndTurn {
+                    return Err(Error::internal_error().data("background turn did not complete"));
+                }
+                record(&trace, json!({"event": "turn.completed", "stopReason": response.stop_reason}));
+                let mut previous = 0;
+                let mut changed_after_turn = false;
+                let mut final_state = 0;
+                for sample in 0..=15 {
+                    let bytes = std::fs::read(workspace.join("probe.txt")).map_err(Error::into_internal_error)?;
+                    let state = (0..=2).find(|state| bytes == format!("flow-probe-{state}\n").as_bytes())
+                        .ok_or_else(|| Error::internal_error().data("unexpected background content"))?;
+                    if state != previous {
+                        changed_after_turn |= sample > 0;
+                        record(&trace, json!({"event": "checkpoint", "sample": sample, "snapshot": checkpoint(&workspace, &evidence, state)?}));
+                    }
+                    previous = state;
+                    final_state = state;
+                    if sample < 15 {
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                }
+                record(&trace, json!({"event": "background.observed", "changedAfterTurn": changed_after_turn, "finalState": final_state}));
+                if final_state != 2 {
+                    return Err(Error::internal_error().data("background writers did not finish"));
+                }
+                return Ok(());
+            }
             if mode == "cancel" {
                 let response = connection.send_request(PromptRequest::new(
                     session.session_id.clone(),
@@ -145,10 +278,13 @@ async fn probe(
                 return Ok(());
             }
             for sequence in 1..=2 {
-                let instruction = format!(
+                let instruction = if mode == "shell" { format!(
+                    "Use a shell command to replace only probe.txt with exactly flow-probe-{sequence} followed by a newline. \
+                     Execute: printf 'flow-probe-{sequence}\\n' > probe.txt"
+                ) } else { format!(
                     "Replace only probe.txt with exactly flow-probe-{sequence} followed by a newline. \
                      Use a file editing tool or shell command. Do not modify any other files."
-                );
+                ) };
                 let response = connection.send_request(PromptRequest::new(
                     session.session_id.clone(),
                     vec![ContentBlock::Text(TextContent::new(instruction))],
@@ -167,8 +303,21 @@ async fn probe(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
     let mode = arguments.next().unwrap_or_default();
-    if !["inspect", "edit", "cancel"].contains(&mode.as_str()) {
-        return Err("Usage: acp_probe inspect|edit|cancel [--allow-once] [--auth-method ID] [--timeout-seconds N] -- EXECUTABLE [ARGS...]".into());
+    if mode == "launch" {
+        return launch(arguments);
+    }
+    if ![
+        "inspect",
+        "auth",
+        "session",
+        "edit",
+        "shell",
+        "background",
+        "cancel",
+    ]
+    .contains(&mode.as_str())
+    {
+        return Err("Usage: acp_probe inspect|auth|session|edit|shell|background|cancel [--allow-once] [--auth-method ID] [--timeout-seconds N] -- EXECUTABLE [ARGS...]".into());
     }
     let mut allow_once = false;
     let mut auth_method = None;
@@ -189,13 +338,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err("expected probe options followed by -- EXECUTABLE [ARGS...]".into()),
         }
     }
+    if mode == "auth" && auth_method.is_none() {
+        return Err("auth mode requires --auth-method ID from an inspect report".into());
+    }
     let executable = PathBuf::from(arguments.next().ok_or("missing adapter executable")?);
     let executable = if executable.components().count() > 1 {
         std::fs::canonicalize(executable)?
     } else {
         executable
     };
-    let agent = AcpAgent::new(AcpAgentConfig::new(executable).args(arguments));
     let evidence = tempfile::Builder::new()
         .prefix("flow-acp-probe-")
         .tempdir()?
@@ -211,28 +362,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     std::fs::write(workspace.join("probe.txt"), "flow-probe-0\n")?;
     let original_directory = std::env::current_dir()?;
-    std::env::set_current_dir(&workspace)?;
     let trace: Trace = Arc::default();
+    let diagnostics = trace.clone();
+    let adapter_panicked = Arc::new(tokio::sync::Notify::new());
+    let panic_signal = adapter_panicked.clone();
+    let started = Instant::now();
+    let agent = AcpAgent::new(AcpAgentConfig::new(std::env::current_exe()?)
+        .args(["launch".to_owned(), workspace.to_str().ok_or("workspace path must be UTF-8")?.to_owned(),
+            executable.to_str().ok_or("executable path must be UTF-8")?.to_owned()])
+        .args(arguments))
+        .with_debug(move |line, direction| {
+            if direction == LineDirection::Stderr {
+                // A worker can panic while the adapter process and RPC stream stay open.
+                let panicked = line.starts_with("thread '") && line.contains(" panicked at ");
+                record(&diagnostics, json!({
+                    "event": "adapter.stderr", "category": diagnostic(line),
+                    "panic": panicked,
+                    "nullObject": line.to_ascii_lowercase().contains("attempted to create a null object"),
+                    "elapsedMs": started.elapsed().as_millis()
+                }));
+                if panicked {
+                    panic_signal.notify_one();
+                }
+            }
+        });
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
     let result = runtime.block_on(async {
-        tokio::time::timeout(
-            Duration::from_secs(timeout_seconds),
-            probe(
-                mode.clone(),
-                agent,
-                workspace,
-                evidence.clone(),
-                allow_once,
-                auth_method,
-                trace.clone(),
-            ),
-        )
+        tokio::time::timeout(Duration::from_secs(timeout_seconds), async {
+            tokio::select! {
+                biased;
+                () = adapter_panicked.notified() => {
+                    record(&trace, json!({"event": "adapter.panic"}));
+                    Err(Error::internal_error().data("adapter panicked"))
+                }
+                result = probe(
+                    mode.clone(), agent, workspace, evidence.clone(),
+                    allow_once, auth_method, trace.clone(),
+                ) => result,
+            }
+        })
         .await
     });
     drop(runtime);
-    std::env::set_current_dir(original_directory)?;
+    let parent_directory_unchanged = std::env::current_dir()? == original_directory;
     let status = match &result {
         Ok(Ok(())) => "passed",
         Ok(Err(_)) => "failed",
@@ -243,10 +417,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
     let events = trace.lock().expect("trace lock poisoned");
+    let failure_reason = if events.iter().any(|event| event["event"] == "adapter.panic") {
+        Some("adapter_panic")
+    } else if status == "timed_out" {
+        Some("timeout")
+    } else if status == "failed" {
+        Some("rpc_or_probe_error")
+    } else {
+        None
+    };
     let report = json!({
         "mode": mode, "status": status, "errorCode": error_code,
+        "failureReason": failure_reason,
         "sdkVersion": "3.3.0", "protocol": "stable-v1", "allowOnce": allow_once,
         "timeoutSeconds": timeout_seconds,
+        "elapsedMs": started.elapsed().as_millis(),
+        "parentDirectoryUnchanged": parent_directory_unchanged,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
         "traceMayBeTruncated": events.len() == 1024,
         "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
         "events": *events
@@ -254,7 +441,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let report_path = evidence.join("report.json");
     std::fs::write(&report_path, serde_json::to_vec_pretty(&report)?)?;
     println!("{}", report_path.display());
-    if status != "passed" {
+    if failure_reason == Some("adapter_panic") {
+        return Err("adapter panicked; probe stopped and SDK subprocess cleanup ran; inspect report.json for redacted diagnostics".into());
+    }
+    if status != "passed" || !parent_directory_unchanged {
         return Err("probe failed; inspect report.json (raw adapter errors omitted to avoid credential leakage)".into());
     }
     Ok(())

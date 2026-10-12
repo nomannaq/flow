@@ -1,10 +1,7 @@
 package dev.flow.spikes
 
-import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
-import com.intellij.diff.DiffRequestFactory
 import com.intellij.diff.merge.MergeResult
-import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -12,8 +9,6 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.editor.EditorFactory
-import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -38,19 +33,8 @@ abstract class CompatibilityProbeAction : AnAction(), DumbAware {
 class HistoricalDiffProbeAction : CompatibilityProbeAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
-        val snapshots = listOf("flow-probe-0\n", "flow-probe-1\n", "flow-probe-2\n")
-        val factory = DiffContentFactory.getInstance()
-        snapshots.zipWithNext().forEachIndexed { index, (before, after) ->
-            DiffManager.getInstance().showDiff(
-                project,
-                SimpleDiffRequest(
-                    "Flow historical operation ${index + 1}",
-                    factory.create(project, before, PlainTextFileType.INSTANCE),
-                    factory.create(project, after, PlainTextFileType.INSTANCE),
-                    "Checkpoint $index",
-                    "Checkpoint ${index + 1}",
-                ),
-            )
+        NativeProbeFixtures.historicalDiffs(project).forEach { request ->
+            DiffManager.getInstance().showDiff(project, request)
         }
     }
 }
@@ -58,20 +42,11 @@ class HistoricalDiffProbeAction : CompatibilityProbeAction() {
 class MergeProbeAction : CompatibilityProbeAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
-        val base = "setting=base\n"
-        val output = EditorFactory.getInstance().createDocument(base)
-        val request = DiffRequestFactory.getInstance().createMergeRequest(
-            project,
-            PlainTextFileType.INSTANCE,
-            output,
-            listOf("setting=developer\n", base, "setting=agent\n"),
-            "Flow compatibility merge — in-memory fixture",
-            listOf("Current project", "Session baseline", "Agent candidate"),
-        ) { result ->
+        val request = NativeProbeFixtures.merge(project) { result, output ->
             if (result == MergeResult.CANCEL) {
                 Messages.showInfoMessage(project, "Merge cancelled; no result accepted.", "Flow Compatibility")
             } else {
-                Messages.showInfoMessage(project, "Result: $result\n\n${output.text}", "Flow Compatibility")
+                Messages.showInfoMessage(project, "Result: $result\n\n$output", "Flow Compatibility")
             }
         }
         DiffManager.getInstance().showMerge(project, request)

@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 plugins {
     kotlin("jvm") version "2.2.20"
     id("org.jetbrains.intellij.platform") version "2.19.0"
@@ -13,7 +15,9 @@ repositories {
 dependencies {
     intellijPlatform {
         intellijIdea("2025.3.6.1")
+        testFramework(TestFrameworkType.Platform)
     }
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {
