@@ -1,0 +1,137 @@
+{
+  "platform": "Darwin-arm64",
+  "suite": "real",
+  "experiments": {
+    "initialize": {
+      "report": {
+        "mode": "inspect",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": false,
+        "timeoutSeconds": 20,
+        "elapsedMs": 35,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          }
+        ]
+      },
+      "checkpointContents": {}
+    },
+    "session": {
+      "report": {
+        "mode": "session",
+        "status": "failed",
+        "errorCode": -32603,
+        "failureReason": "adapter_panic",
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": false,
+        "timeoutSeconds": 20,
+        "elapsedMs": 31,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 31
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "system_configuration",
+            "panic": true,
+            "nullObject": false,
+            "elapsedMs": 31
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": true,
+            "elapsedMs": 31
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 31
+          },
+          {
+            "event": "adapter.panic"
+          }
+        ]
+      },
+      "checkpointContents": {}
+    }
+  },
+  "recordedAt": "2026-10-11T21:40:21.348373+00:00",
+  "sourceSha256": {
+    "Cargo.lock": "26365a63f147a0738d68bb9c91298149429403048815041ebe9ae9e266cc4344",
+    "crates/runtime/examples/acp_probe.rs": "4048fdb258743c491ea9ea0870194e64c55b6e133e5dc577f0df8b9d04359bf9",
+    "scripts/spikes/fixture_agent.py": "12736a94d087abef028a8c2d2c6fbcd5a7ae482c0c563205671d35d34d5a7475",
+    "scripts/spikes/check_acp_probe.py": "de482e5daec5b5e8da26d6ab2d418819df202e3eed19b352c4fff4cef64a60da"
+  },
+  "adapterSha256": "027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524",
+  "suitePassed": false
+}

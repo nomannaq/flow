@@ -1,0 +1,1525 @@
+{
+  "platform": "Darwin-arm64",
+  "suite": "real",
+  "experiments": {
+    "initialize": {
+      "report": {
+        "mode": "inspect",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": false,
+        "timeoutSeconds": 120,
+        "elapsedMs": 39,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          }
+        ]
+      },
+      "checkpointContents": {}
+    },
+    "session": {
+      "report": {
+        "mode": "session",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 43,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "connection_error",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 30
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          }
+        ]
+      },
+      "checkpointContents": {}
+    },
+    "edit": {
+      "report": {
+        "mode": "edit",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 15941,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "connection_error",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 25
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call",
+            "status": "in_progress",
+            "toolCallIdHash": "bddf5343f769b4b667d8fc67e7ee235e0b1220446088b79d448962783f8db65f"
+          },
+          {
+            "event": "permission.requested",
+            "decision": "allow_once"
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call_update",
+            "status": "completed",
+            "toolCallIdHash": "bddf5343f769b4b667d8fc67e7ee235e0b1220446088b79d448962783f8db65f"
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "turn.completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 1,
+              "blob": "checkpoint-1.txt",
+              "blake3": "16aeaeba9fcf0e88f18fc2f6b7421d5a931b69bd1dd643537f14834d4832aa1e"
+            }
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call",
+            "status": "in_progress",
+            "toolCallIdHash": "f4a01318857a84199513a52fc9ef0ab91ea8720623c6f1fb459298de02c4a607"
+          },
+          {
+            "event": "permission.requested",
+            "decision": "allow_once"
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call_update",
+            "status": "completed",
+            "toolCallIdHash": "f4a01318857a84199513a52fc9ef0ab91ea8720623c6f1fb459298de02c4a607"
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "turn.completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 2,
+              "blob": "checkpoint-2.txt",
+              "blake3": "03ab191cdb1cd9718095cc13d866954f88fedc9346537ccf283dfb08fcb21b84"
+            }
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n",
+        "checkpoint-1.txt": "flow-probe-1\n",
+        "checkpoint-2.txt": "flow-probe-2\n"
+      }
+    },
+    "shell": {
+      "report": {
+        "mode": "shell",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 19836,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "connection_error",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 32
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call",
+            "status": "in_progress",
+            "toolCallIdHash": "947413cc82096df73f866e7b7672450b02a3a69647133327524e20a6d3bd6532"
+          },
+          {
+            "event": "permission.requested",
+            "decision": "allow_once"
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call_update",
+            "status": "completed",
+            "toolCallIdHash": "947413cc82096df73f866e7b7672450b02a3a69647133327524e20a6d3bd6532"
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "turn.completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 1,
+              "blob": "checkpoint-1.txt",
+              "blake3": "16aeaeba9fcf0e88f18fc2f6b7421d5a931b69bd1dd643537f14834d4832aa1e"
+            }
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call",
+            "status": "in_progress",
+            "toolCallIdHash": "fdb2be511e32930484228aef331559ea72afd29cd6c78cac66b362f0072326f1"
+          },
+          {
+            "event": "permission.requested",
+            "decision": "allow_once"
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call_update",
+            "status": "completed",
+            "toolCallIdHash": "fdb2be511e32930484228aef331559ea72afd29cd6c78cac66b362f0072326f1"
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "turn.completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 2,
+              "blob": "checkpoint-2.txt",
+              "blake3": "03ab191cdb1cd9718095cc13d866954f88fedc9346537ccf283dfb08fcb21b84"
+            }
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n",
+        "checkpoint-1.txt": "flow-probe-1\n",
+        "checkpoint-2.txt": "flow-probe-2\n"
+      }
+    },
+    "background": {
+      "report": {
+        "mode": "background",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 16639,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "connection_error",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 31
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call",
+            "status": "in_progress",
+            "toolCallIdHash": "7eb06cccc51c79a951fe00076caea5cd2fe68f887caf2086b756a11ff092af59"
+          },
+          {
+            "event": "permission.requested",
+            "decision": "allow_once"
+          },
+          {
+            "event": "session.update",
+            "kind": "tool_call_update",
+            "status": "completed",
+            "toolCallIdHash": "7eb06cccc51c79a951fe00076caea5cd2fe68f887caf2086b756a11ff092af59"
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.update",
+            "kind": "agent_message_chunk",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "turn.completed",
+            "stopReason": "end_turn"
+          },
+          {
+            "event": "checkpoint",
+            "sample": 0,
+            "snapshot": {
+              "sequence": 2,
+              "blob": "checkpoint-2.txt",
+              "blake3": "03ab191cdb1cd9718095cc13d866954f88fedc9346537ccf283dfb08fcb21b84"
+            }
+          },
+          {
+            "event": "background.observed",
+            "changedAfterTurn": false,
+            "finalState": 2
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n",
+        "checkpoint-2.txt": "flow-probe-2\n"
+      }
+    },
+    "cancel": {
+      "report": {
+        "mode": "cancel",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "errorCategory": null,
+        "httpError": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 1052,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "connection_error",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 32
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "session.cancel.sent"
+          },
+          {
+            "event": "session.cancel.acknowledged"
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      }
+    }
+  },
+  "recordedAt": "2026-10-12T09:55:10.682915+00:00",
+  "sourceSha256": {
+    "Cargo.lock": "26365a63f147a0738d68bb9c91298149429403048815041ebe9ae9e266cc4344",
+    "crates/runtime/examples/acp_probe.rs": "2e042d99eb3a346061f94e071f1d69683cd340d9832ded93f10565266d626327",
+    "scripts/spikes/fixture_agent.py": "a91eeed9552afb2304ff5f9aa9d1adb9ecfcf8e890b9317472760ee6d9d11cca",
+    "scripts/spikes/check_acp_probe.py": "a557ca88fe6d4e78cd218abe4a867b666241f7fb2ab9547dddf5ef8d3fd6472d"
+  },
+  "adapterSha256": "027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524",
+  "suitePassed": true
+}

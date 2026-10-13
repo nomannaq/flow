@@ -13,3 +13,12 @@ trim_trailing_whitespace = false
 
 [*.bat]
 end_of_line = crlf
+
+[*.{kt,kts}]
+ktlint_code_style = intellij_idea
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+
+[*.{yml,yaml}]
+indent_size = 2
