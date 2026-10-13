@@ -1,0 +1,153 @@
+{
+  "initializeRequest": {
+    "jsonrpc": "2.0",
+    "id": "init-1",
+    "method": "engine.initialize",
+    "params": {
+      "protocolVersion": 1,
+      "clientName": "Flow JetBrains — 日本語",
+      "clientVersion": "0.1.0",
+      "projectId": "project-fixture",
+      "capabilities": {
+        "editorContext": true,
+        "historicalDiff": true,
+        "nativeMerge": true,
+        "commitSelection": false
+      }
+    }
+  },
+  "initializeResponse": {
+    "jsonrpc": "2.0",
+    "id": "init-1",
+    "epoch": "fixture-epoch",
+    "result": {
+      "protocolVersion": 1,
+      "engineVersion": "0.1.0",
+      "epoch": "fixture-epoch",
+      "projectId": "project-fixture",
+      "capabilities": {
+        "cancellation": true,
+        "persistentEvents": false,
+        "idempotentMutations": false,
+        "agentSessions": false
+      },
+      "maxFrameBytes": 1048576,
+      "maxInFlight": 32,
+      "maxConnectionRequests": 4096,
+      "defaultTimeoutMs": 30000,
+      "maxTimeoutMs": 30000
+    }
+  },
+  "healthRequest": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "epoch": "fixture-epoch",
+    "method": "engine.health",
+    "params": {
+      "waitMs": 10
+    },
+    "timeoutMs": 1000
+  },
+  "healthResponse": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "epoch": "fixture-epoch",
+    "result": {
+      "protocolVersion": 1,
+      "engineVersion": "0.1.0",
+      "projectId": "project-fixture"
+    }
+  },
+  "cancelNotification": {
+    "jsonrpc": "2.0",
+    "epoch": "fixture-epoch",
+    "method": "requests.cancel",
+    "params": {
+      "id": 21
+    }
+  },
+  "errorResponse": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "epoch": "fixture-epoch",
+    "error": {
+      "code": -32800,
+      "message": "Request cancelled"
+    }
+  },
+  "shutdownResponse": {
+    "jsonrpc": "2.0",
+    "id": "shutdown-1",
+    "epoch": "fixture-epoch",
+    "result": null
+  },
+  "parseErrorResponse": {
+    "jsonrpc": "2.0",
+    "id": null,
+    "error": {
+      "code": -32700,
+      "message": "Parse error"
+    }
+  },
+  "durableEvent": {
+    "cursor": {
+      "storeId": "store-fixture",
+      "sequence": "18446744073709551615"
+    },
+    "schemaVersion": 1,
+    "workspaceId": "workspace-fixture",
+    "sessionId": "session-fixture",
+    "kind": "future.event",
+    "payload": {
+      "text": "line 1\nλ 日本語 👋",
+      "newField": true
+    }
+  },
+  "mutationReceipt": {
+    "key": "mutation-fixture",
+    "requestDigest": "blake3:fixture",
+    "status": "succeeded",
+    "outcome": {
+      "candidateId": "candidate-1"
+    }
+  },
+  "stateSnapshot": {
+    "highWater": {
+      "storeId": "store-fixture",
+      "sequence": "18446744073709551615"
+    },
+    "state": {
+      "sessions": []
+    }
+  },
+  "replayParams": {
+    "after": {
+      "storeId": "store-fixture",
+      "sequence": "9007199254740993"
+    },
+    "limit": 100
+  },
+  "replayPage": {
+    "events": [
+      {
+        "cursor": {
+          "storeId": "store-fixture",
+          "sequence": "18446744073709551615"
+        },
+        "schemaVersion": 1,
+        "workspaceId": "workspace-fixture",
+        "sessionId": "session-fixture",
+        "kind": "future.event",
+        "payload": {
+          "text": "line 1\nλ 日本語 👋",
+          "newField": true
+        }
+      }
+    ],
+    "highWater": {
+      "storeId": "store-fixture",
+      "sequence": "18446744073709551615"
+    },
+    "hasMore": false
+  }
+}

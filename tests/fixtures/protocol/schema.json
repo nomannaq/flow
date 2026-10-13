@@ -1,0 +1,595 @@
+{
+  "$defs": {
+    "CancelParams": {
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "DurableEvent": {
+      "properties": {
+        "cursor": {
+          "$ref": "#/$defs/EventCursor"
+        },
+        "kind": {
+          "description": "Open string: hosts retain unknown event kinds and their opaque payloads.",
+          "type": "string"
+        },
+        "payload": true,
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/WorkspaceId"
+        }
+      },
+      "required": [
+        "cursor",
+        "schemaVersion",
+        "workspaceId",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EngineCapabilities": {
+      "properties": {
+        "agentSessions": {
+          "type": "boolean"
+        },
+        "cancellation": {
+          "type": "boolean"
+        },
+        "idempotentMutations": {
+          "type": "boolean"
+        },
+        "persistentEvents": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cancellation",
+        "persistentEvents",
+        "idempotentMutations",
+        "agentSessions"
+      ],
+      "type": "object"
+    },
+    "EngineEpoch": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "EventCursor": {
+      "properties": {
+        "sequence": {
+          "$ref": "#/$defs/EventSequence"
+        },
+        "storeId": {
+          "$ref": "#/$defs/StoreId"
+        }
+      },
+      "required": [
+        "storeId",
+        "sequence"
+      ],
+      "type": "object"
+    },
+    "EventSequence": {
+      "description": "Decimal on the wire: sequences never lose precision in JavaScript hosts.",
+      "type": "string"
+    },
+    "HealthParams": {
+      "properties": {
+        "waitMs": {
+          "default": 0,
+          "description": "Optional bounded diagnostic wait for exercising cancellation/deadlines.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "HealthResult": {
+      "properties": {
+        "engineVersion": {
+          "type": "string"
+        },
+        "projectId": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "engineVersion",
+        "projectId"
+      ],
+      "type": "object"
+    },
+    "HostCapabilities": {
+      "properties": {
+        "commitSelection": {
+          "default": false,
+          "type": "boolean"
+        },
+        "editorContext": {
+          "default": false,
+          "type": "boolean"
+        },
+        "historicalDiff": {
+          "default": false,
+          "type": "boolean"
+        },
+        "nativeMerge": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "InitializeParams": {
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/HostCapabilities",
+          "default": {
+            "commitSelection": false,
+            "editorContext": false,
+            "historicalDiff": false,
+            "nativeMerge": false
+          }
+        },
+        "clientName": {
+          "type": "string"
+        },
+        "clientVersion": {
+          "type": "string"
+        },
+        "projectId": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "clientName",
+        "clientVersion",
+        "projectId"
+      ],
+      "type": "object"
+    },
+    "InitializeResult": {
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/EngineCapabilities"
+        },
+        "defaultTimeoutMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "engineVersion": {
+          "type": "string"
+        },
+        "epoch": {
+          "$ref": "#/$defs/EngineEpoch"
+        },
+        "maxConnectionRequests": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxFrameBytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxInFlight": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxTimeoutMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "projectId": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "engineVersion",
+        "epoch",
+        "projectId",
+        "capabilities",
+        "maxFrameBytes",
+        "maxInFlight",
+        "maxConnectionRequests",
+        "defaultTimeoutMs",
+        "maxTimeoutMs"
+      ],
+      "type": "object"
+    },
+    "JsonRpc": {
+      "enum": [
+        "2.0"
+      ],
+      "type": "string"
+    },
+    "Method": {
+      "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
+      "enum": [
+        "engine.initialize",
+        "engine.health",
+        "engine.shutdown",
+        "requests.cancel"
+      ],
+      "type": "string"
+    },
+    "MutationKey": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "MutationReceipt": {
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/MutationKey"
+        },
+        "outcome": true,
+        "requestDigest": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/MutationStatus"
+        }
+      },
+      "required": [
+        "key",
+        "requestDigest",
+        "status"
+      ],
+      "type": "object"
+    },
+    "MutationStatus": {
+      "enum": [
+        "accepted",
+        "running",
+        "succeeded",
+        "failed",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Notification": {
+      "properties": {
+        "epoch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EngineEpoch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpc"
+        },
+        "method": {
+          "type": "string"
+        },
+        "params": {
+          "default": {}
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "ProjectId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "ReplayPage": {
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/DurableEvent"
+          },
+          "type": "array"
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "highWater": {
+          "$ref": "#/$defs/EventCursor"
+        }
+      },
+      "required": [
+        "events",
+        "highWater",
+        "hasMore"
+      ],
+      "type": "object"
+    },
+    "ReplayParams": {
+      "properties": {
+        "after": {
+          "$ref": "#/$defs/EventCursor"
+        },
+        "limit": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "after",
+        "limit"
+      ],
+      "type": "object"
+    },
+    "Request": {
+      "properties": {
+        "epoch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EngineEpoch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpc"
+        },
+        "method": {
+          "type": "string"
+        },
+        "params": {
+          "default": {}
+        },
+        "timeoutMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "method"
+      ],
+      "type": "object"
+    },
+    "RequestId": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RequestToken"
+        },
+        {
+          "format": "int64",
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        }
+      ]
+    },
+    "RequestToken": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "Response": {
+      "oneOf": [
+        {
+          "not": {
+            "required": [
+              "error"
+            ]
+          },
+          "required": [
+            "result"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "result"
+            ]
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "properties": {
+        "epoch": {
+          "$ref": "#/$defs/EngineEpoch"
+        },
+        "error": {
+          "$ref": "#/$defs/RpcError"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "result": true
+      },
+      "required": [
+        "jsonrpc",
+        "id"
+      ],
+      "type": "object"
+    },
+    "RpcError": {
+      "properties": {
+        "code": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "SessionId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "StateSnapshot": {
+      "properties": {
+        "highWater": {
+          "$ref": "#/$defs/EventCursor"
+        },
+        "state": true
+      },
+      "required": [
+        "highWater",
+        "state"
+      ],
+      "type": "object"
+    },
+    "StoreId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    },
+    "WorkspaceId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A schema catalogue, not an additional wire envelope. Review generated changes.",
+  "properties": {
+    "cancelParams": {
+      "$ref": "#/$defs/CancelParams"
+    },
+    "durableEvent": {
+      "$ref": "#/$defs/DurableEvent"
+    },
+    "healthParams": {
+      "$ref": "#/$defs/HealthParams"
+    },
+    "healthResult": {
+      "$ref": "#/$defs/HealthResult"
+    },
+    "initializeParams": {
+      "$ref": "#/$defs/InitializeParams"
+    },
+    "initializeResult": {
+      "$ref": "#/$defs/InitializeResult"
+    },
+    "method": {
+      "$ref": "#/$defs/Method"
+    },
+    "mutationReceipt": {
+      "$ref": "#/$defs/MutationReceipt"
+    },
+    "notification": {
+      "$ref": "#/$defs/Notification"
+    },
+    "replayPage": {
+      "$ref": "#/$defs/ReplayPage"
+    },
+    "replayParams": {
+      "$ref": "#/$defs/ReplayParams"
+    },
+    "request": {
+      "$ref": "#/$defs/Request"
+    },
+    "response": {
+      "$ref": "#/$defs/Response"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/StateSnapshot"
+    }
+  },
+  "required": [
+    "method",
+    "request",
+    "notification",
+    "response",
+    "initializeParams",
+    "initializeResult",
+    "healthParams",
+    "healthResult",
+    "cancelParams",
+    "durableEvent",
+    "snapshot",
+    "replayParams",
+    "replayPage",
+    "mutationReceipt"
+  ],
+  "title": "Contract",
+  "type": "object"
+}
