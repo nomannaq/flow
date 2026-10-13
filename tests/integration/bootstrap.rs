@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[test]
 fn bootstrap_keeps_stdout_and_workspace_clean() {
@@ -6,6 +6,7 @@ fn bootstrap_keeps_stdout_and_workspace_clean() {
     let output = Command::new(env!("CARGO_BIN_EXE_flow-engine"))
         .current_dir(workspace.path())
         .env("RUST_LOG", "info")
+        .stdin(Stdio::null())
         .output()
         .expect("launch Flow engine");
 

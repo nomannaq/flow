@@ -15,6 +15,8 @@ runtime = { path = "crates/runtime" }
 history = { path = "crates/history" }
 
 agent-client-protocol = { version = "3.3.0", default-features = false, features = ["process"] }
+futures-util = { version = "0.3", features = ["sink"] }
+getrandom = "0.4.3"
 blake3 = "1.8.7"
 ignore = "0.4"
 rusqlite = { version = "0.40.2", features = ["bundled"] }

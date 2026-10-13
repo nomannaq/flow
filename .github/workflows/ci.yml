@@ -60,6 +60,7 @@ jobs:
       - name: Require reviewed dependency state
         run: |
           test "$(uname -m)" = arm64
+          rustup show
           test -s gradle.lockfile
           test -s gradle/verification-metadata.xml
       - name: Formatting, native tests, build and pinned Plugin Verifier
@@ -72,7 +73,10 @@ jobs:
           reports = list(Path('build/test-results/test').glob('TEST-*.xml'))
           assert reports, 'No native test reports discovered'
           suites = [ET.parse(path).getroot() for path in reports]
-          assert sum(int(s.attrib['tests']) for s in suites) >= 3, 'Expected at least the three compatibility tests'
+          native = next((s for s in suites if s.attrib['name'] == 'dev.flow.spikes.NativeCompatibilityTest'), None)
+          assert native is not None and int(native.attrib['tests']) >= 3, 'Native compatibility tests must run'
+          protocol = next((s for s in suites if s.attrib['name'] == 'dev.flow.bridge.ProtocolTest'), None)
+          assert protocol is not None and int(protocol.attrib['tests']) >= 4, 'Protocol contract tests must run'
           for suite in suites:
               assert all(int(suite.attrib.get(key, 0)) == 0 for key in ('failures', 'errors', 'skipped')), suite.attrib
           PY
