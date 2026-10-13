@@ -35,6 +35,22 @@ kotlin {
     jvmToolchain(21)
 }
 
+sourceSets.test {
+    resources.srcDir("../../tests/fixtures/protocol")
+}
+
+val buildProtocolTestEngine by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Build the Rust executable used by the Kotlin IPC contract test."
+    workingDir = rootProject.file("../..")
+    commandLine("cargo", "build", "-p", "engine", "--locked", "--target-dir", rootProject.file("../../target"))
+}
+
+tasks.test {
+    dependsOn(buildProtocolTestEngine)
+    systemProperty("flow.test.engine", rootProject.file("../../target/debug/flow-engine").absolutePath)
+}
+
 intellijPlatform {
     pluginVerification {
         ides {

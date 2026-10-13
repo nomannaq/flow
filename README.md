@@ -8,9 +8,9 @@ developer in control. Existing agents handle coding; Flow provides workspace
 isolation, project context, and native review tools around them.
 
 **Status: early development.** The repository currently contains the Rust
-workspace, dependency configuration, engine bootstrap, and a placeholder Swing
-tool window. The features below are planned; agent execution and the IDE-to-engine
-bridge are not implemented yet.
+workspace, dependency configuration, versioned stdio engine protocol, and a
+placeholder Swing tool window. The features below are planned; agent execution
+and the IDE-to-engine bridge are not implemented yet.
 
 ## Planned features
 
@@ -119,7 +119,7 @@ and orchestration engine.
 
 | Path | Responsibility |
 | --- | --- |
-| `crates/protocol` | Serde/JSON Schema contract for the future Flow IPC |
+| `crates/protocol` | Typed Flow IPC contract, storage interfaces and JSON Schema export |
 | `crates/runtime` | ACP SDK integration, session policy and Git worktrees |
 | `crates/history` | SQLite and immutable BLAKE3/zstd history |
 | `crates/engine` | Tokio executable and application wiring |
@@ -131,6 +131,29 @@ Tree-sitter/RMCP/FTS5, and genai utilities are introduced in their planned later
 milestones.
 
 ## Development
+
+### Engine protocol (B03)
+
+The Rust executable now serves Flow JSON-RPC v1 over bounded newline-delimited
+stdio. Initialize the connection, use its returned epoch for health/shutdown
+requests, and send `requests.cancel` notifications to cancel pending requests.
+Only these connection methods are implemented; agent sessions and durable replay
+remain later milestones. The [protocol reference](docs/engine-protocol.md) defines
+the wire format, limits, errors, cancellation and mutation retry rules.
+
+Kotlin has explicit protocol DTOs and connection-local reply correlation. Shared
+golden fixtures and schema checks keep both languages aligned. A Kotlin test
+launches the real Rust engine and performs initialization, health, timeout and
+shutdown. The Swing project-service transport remains B06.
+
+B03's local validation passed, including the strict Gradle build, all seven
+Kotlin tests and Plugin Verifier on IDEA IU-253.33813.55. See the protocol
+reference for test evidence and remaining platform API notices.
+
+```sh
+cargo run -p protocol --example export_schema --locked -- tests/fixtures/protocol/schema.json
+cargo test --workspace --all-targets --locked
+```
 
 ### Build foundation (B02)
 
@@ -170,15 +193,19 @@ cargo test --workspace --all-targets --locked
 cargo run -p engine --locked
 ```
 
-The engine currently initializes logging on stderr and exits. `Cargo.lock`
-records resolved dependencies; a fresh machine needs crates.io access to download
-them.
+The engine logs only to stderr and waits for JSON-RPC messages on stdin. It exits
+on EOF or a negotiated shutdown. Run the example in the protocol reference for
+an interactive smoke check. `Cargo.lock` records resolved dependencies; a fresh
+machine needs crates.io access to download them.
 
 ### JetBrains plugin
 
 Install JDK 21 and set `JAVA_HOME` to it. The build uses Gradle 9.0.0, Kotlin 2.2.20,
 IntelliJ Platform Gradle plugin 2.19.0, and IntelliJ IDEA 2025.3.6.1. The IDE provides
 Kotlin stdlib and coroutines; the plugin does not bundle another copy.
+Gradle tests now also require Cargo on PATH: they build the Rust engine for the
+Kotlin-to-Rust protocol integration test. New protocol fixtures are shared test
+resources, not plugin runtime assets.
 
 ```sh
 cd integrations/jetbrains
