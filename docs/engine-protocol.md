@@ -3,7 +3,7 @@
 Branch: `feat/versioned-engine-protocol`. Rust owns the protocol and product state.
 The Kotlin DTOs are a small explicit adapter using the pinned IDE's Gson. No
 JetBrains or ACP types cross the Flow boundary. Swing and the project-service
-subprocess bridge are B06; B03 supplies its contract and correlation helper.
+subprocess bridge are implemented in B06; B03 supplies its contract and correlation helper.
 
 ## Wire profile
 
@@ -55,8 +55,11 @@ The result advertises protocol/engine versions, a random connection epoch, the
 bound project ID, limits and capabilities. The project ID is an opaque host-supplied
 binding; canonical filesystem identity/authorization belongs to B07. Capability
 booleans describe supported behavior, not filesystem permission. Currently only
-cancellation is enabled. Agent sessions, durable events and idempotent mutations
-are explicitly false. Initialize does not open a repository or spawn an agent.
+cancellation is always enabled. B06 enables `persistentEvents` when the engine
+is launched with `--project-root PATH` (and optionally `--data-root PATH` for
+tests). The canonical project history is opened at launch, before initialization.
+Bare stdio launches remain side-effect free and advertise no durable events.
+Agent sessions and idempotent mutation endpoints remain false; no agent is spawned.
 
 The v1 version integer denotes the major wire contract; additive fields and
 capabilities do not change it. Unsupported versions fail explicitly and allow a
@@ -69,6 +72,8 @@ with wrong types are rejected.
 | --- | --- |
 | `engine.initialize` | Request; returns `InitializeResult` and binds the connection |
 | `engine.health` | Request; requires `epoch`, returns version and project identity |
+| `state.snapshot` | Project-bound request; returns a consistent count summary and `highWater` cursor |
+| `events.replay` | Project-bound request; `{after: {storeId, sequence}, limit: 1..100}`; returns ordered events, `highWater` and `hasMore` |
 | `engine.shutdown` | Request; requires `epoch`, cancels pending work, sends its cancellations then a final null result and exits |
 | `requests.cancel` | Notification; requires matching `epoch` and `params.id`, cancels that pending request |
 
@@ -101,6 +106,7 @@ blocks Swing's event-dispatch thread.
 | −32600 | Invalid envelope or frame |
 | −32601 | Unimplemented/unknown method |
 | −32602 | Invalid params or timeout |
+| −32603 | Internal storage/worker failure (details withheld) |
 | −32001 | Initialization required |
 | −32002 | Incompatible Flow version |
 | −32003 | Already initialized |
@@ -118,12 +124,12 @@ truthiness. Exactly one `result` or `error` is required on each response.
 
 `ProtocolStore` specifies consistent snapshot+high-water reads, ordered replay,
 mutation lookup, atomic key/digest claims and transaction-bound outcome recording.
-It has no implementation here. B04 must publish domain state, events and receipts
-atomically and assign database-wide monotonic event sequences. A replay cursor
+B04's history crate implements it and publishes domain state, events and receipts
+atomically with database-wide monotonic event sequences. A replay cursor
 contains a persistent store ID plus a decimal-string u64 sequence. It survives
 engine restarts; the connection epoch does not. Foreign/pruned cursors require
 resynchronization, never an empty page masquerading as success. Replay limits must
-be validated and pages bounded when the handlers are introduced.
+be validated and pages bounded; B06's read handlers cap pages at 100 events.
 
 Unknown event kinds keep their payloads intact. Unknown mutation statuses mean
 `unknown`, never success. Kotlin retains the original status string. Mutation
@@ -131,8 +137,8 @@ idempotency keys bind to a canonical request digest: same key/different digest i
 a conflict; same key/same digest returns the existing receipt. A host timeout or
 disconnect says nothing about whether a future durable mutation happened. Query
 the receipt before retrying; never generate a new key just because transport failed.
-Cancellation is not a rollback guarantee. These handlers are not advertised until
-durable storage exists, so B03 never claims in-memory replay is durable.
+Cancellation is not a rollback guarantee. B06 advertises durable read handlers
+only when a real history store is open. Mutation endpoints remain unimplemented.
 
 ## Schema and validation
 
@@ -161,7 +167,7 @@ tests cover framing, invalid inputs, limits, cancellation, EOF and concurrency.
 For a small smoke check, pipe just an initialize request to `cargo run -p engine
 --locked`; it replies and exits on EOF. For an interactive check, keep stdin open,
 copy the returned epoch into health and shutdown requests, and read stdout as
-JSON lines. Production IDE launch/disposal/reconnect remains B06.
+JSON lines. See [B06 bridge behavior](jetbrains-engine-bridge.md) for native launch/disposal/reconnect.
 
 ## Implementation validation (2026-10-13; host gate passed 2026-10-14)
 
@@ -183,6 +189,6 @@ JSON lines. Production IDE launch/disposal/reconnect remains B06.
   validation is complete; this does not establish a clean-checkout CI result or
   compatibility with other IDE builds.
 
-Persistent storage and a live Swing connection are deliberately separate B04/B06
-deliverables. No durable replay, agent task or reconnect guarantee is advertised
-by this implementation.
+The validation above records B03's original scope. B04 supplied persistence and
+B06 now exposes snapshot/replay and the live Swing connection; see its separate
+validation record. No agent task support is advertised yet.
