@@ -132,6 +132,27 @@ milestones.
 
 ## Development
 
+### Deterministic agent and repository fixtures (B05)
+
+B05 adds an offline ACP SDK fake agent and owned temporary Git repositories.
+Tests cover sequential historical edits, permissions, delayed/cancel-resistant
+agents, failed partial writes, malformed output, shell writes, dirty index and
+worktree states, conflicts, renames, binary files, symlinks and unusual paths.
+Independent byte/type/mode oracles verify snapshots after storage restart and
+reject deliberately incorrect expectations. No model credentials are needed.
+
+```sh
+cargo test -p runtime --test fixtures --locked
+python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b05-fixtures.json
+```
+
+The process suite now has 18 experiments, including a crash after a partial
+write. See the [fixture guide](docs/testing-fixtures.md) for scope and commands.
+This is test infrastructure; the native engine bridge remains B06.
+
+GitHub Actions workflows have been removed. Run the validation commands locally;
+removing the workflow files does not delete historical GitHub run records.
+
 ### Immutable history storage (B04)
 
 The `history` crate now stores immutable manifests and BLAKE3/zstd content,
@@ -170,12 +191,12 @@ cargo test --workspace --all-targets --locked
 
 ### Build foundation (B02)
 
-B02 adds macOS arm64 CI, a registered engine integration test, Kotlin formatting,
+B02 adds a registered engine integration test, Kotlin formatting,
 strict Gradle dependency locking and Plugin Verifier against the pinned IDE.
 The host baseline build passed: Kotlin formatting, three native tests, plugin
 packaging and Plugin Verifier against IDEA IU-253.33813.55. Gradle's lockfile and
 checksum metadata are generated, and strict verification without generation
-flags now passes. The first clean-checkout CI run remains pending; see the
+flags now passes. A clean-checkout validation remains pending; see the
 [build foundation setup](docs/build-foundation.md) for commands and evidence.
 The two outstanding B01 checks remain tracked separately; proceeding with build
 infrastructure does not declare G0 complete.
