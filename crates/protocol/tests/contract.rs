@@ -34,6 +34,9 @@ fn shared_golden_contract_and_schema_do_not_drift() {
     round_trip::<StateSnapshot>(&f["stateSnapshot"]);
     round_trip::<ReplayParams>(&f["replayParams"]);
     round_trip::<ReplayPage>(&f["replayPage"]);
+    round_trip::<AgentStart>(&f["agentStart"]);
+    round_trip::<AgentView>(&f["agentView"]);
+    round_trip::<PermissionDecision>(&f["permissionDecision"]);
     let checked_in: Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/protocol/schema.json")).unwrap();
     assert_eq!(

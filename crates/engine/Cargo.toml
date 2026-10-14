@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "bootstrap"
 path = "../../tests/integration/bootstrap.rs"
 
+[[test]]
+name = "agent_sessions"
+path = "../../tests/integration/agent_sessions.rs"
+
 [dependencies]
 futures-util.workspace = true
 getrandom.workspace = true
