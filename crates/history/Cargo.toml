@@ -8,12 +8,14 @@ publish.workspace = true
 
 [dependencies]
 blake3.workspace = true
+getrandom.workspace = true
+protocol.workspace = true
 rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
 tracing.workspace = true
 zstd.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
 
 [lints]
 workspace = true

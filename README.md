@@ -8,7 +8,7 @@ developer in control. Existing agents handle coding; Flow provides workspace
 isolation, project context, and native review tools around them.
 
 **Status: early development.** The repository currently contains the Rust
-workspace, dependency configuration, versioned stdio engine protocol, and a
+workspace, durable history storage, versioned stdio engine protocol, and a
 placeholder Swing tool window. The features below are planned; agent execution
 and the IDE-to-engine bridge are not implemented yet.
 
@@ -131,6 +131,19 @@ Tree-sitter/RMCP/FTS5, and genai utilities are introduced in their planned later
 milestones.
 
 ## Development
+
+### Immutable history storage (B04)
+
+The `history` crate now stores immutable manifests and BLAKE3/zstd content,
+with SQLite metadata, durable events and mutation receipts on one bounded writer
+thread. It preserves file modes/types, detects damaged content and backs up older
+schemas before migration. Storage is outside the repository; capturing agent
+edits and connecting the store to the IDE remain later milestones.
+
+See the [storage reference](docs/history-storage.md) for the publication order,
+API boundaries, retry rules, limits and crash-recovery tests.
+Local Rust workspace tests, formatting and Clippy pass, including the new history
+restart, corruption and crash-boundary checks.
 
 ### Engine protocol (B03)
 
