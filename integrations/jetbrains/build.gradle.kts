@@ -50,6 +50,7 @@ tasks.test {
     dependsOn(buildProtocolTestEngine)
     systemProperty("flow.test.engine", rootProject.file("../../target/debug/flow-engine").absolutePath)
     systemProperty("flow.test.fakeEngine", rootProject.file("../../tests/fixtures/engine/fake_engine.py").absolutePath)
+    systemProperty("flow.test.adapterFixture", rootProject.file("../../scripts/spikes/fixture_agent.py").absolutePath)
 }
 
 intellijPlatform {

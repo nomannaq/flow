@@ -18,7 +18,10 @@ def update(payload):
     send({"method": "session/update", "params": {"sessionId": "fixture", "update": payload}})
 
 
-child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(180)"])
+child_code = "import time; time.sleep(180)"
+if "--heartbeat" in sys.argv:
+    child_code = "import time,pathlib\nfor i in range(3600):\n pathlib.Path('fixture-heartbeat').write_text(str(i)); time.sleep(0.05)"
+child = subprocess.Popen([sys.executable, "-c", child_code])
 Path("fixture-pids.json").write_text(json.dumps([os.getpid(), child.pid]))
 if "FLOW_PROBE_SECRET" in os.environ:
     raise RuntimeError("launcher inherited an unapproved environment variable")
