@@ -1,0 +1,11 @@
+CREATE TABLE meta (singleton INTEGER PRIMARY KEY CHECK(singleton=1), store_id TEXT NOT NULL, project_root TEXT NOT NULL);
+CREATE TABLE workspaces (id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, record TEXT NOT NULL);
+CREATE TABLE blobs (id TEXT PRIMARY KEY, size INTEGER NOT NULL CHECK(size>=0));
+CREATE TABLE snapshots (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, workspace_id TEXT NOT NULL REFERENCES workspaces(id), manifest TEXT NOT NULL);
+CREATE TABLE snapshot_blobs (snapshot_id TEXT NOT NULL REFERENCES snapshots(id), blob_id TEXT NOT NULL REFERENCES blobs(id), PRIMARY KEY(snapshot_id,blob_id));
+CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), baseline TEXT NOT NULL REFERENCES snapshots(id), record TEXT NOT NULL);
+CREATE TABLE turns (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), record TEXT NOT NULL);
+CREATE TABLE operations (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), turn_id TEXT NOT NULL REFERENCES turns(id), before_id TEXT NOT NULL REFERENCES snapshots(id), after_id TEXT NOT NULL REFERENCES snapshots(id), sequence INTEGER NOT NULL CHECK(sequence>0), record TEXT NOT NULL, UNIQUE(session_id,sequence));
+CREATE TABLE file_changes (operation_id TEXT NOT NULL REFERENCES operations(id), path TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(operation_id,path));
+CREATE INDEX snapshots_workspace ON snapshots(workspace_id,sequence);
+CREATE INDEX sessions_workspace ON sessions(workspace_id,id);
