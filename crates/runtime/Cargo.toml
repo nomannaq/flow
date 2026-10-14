@@ -10,15 +10,17 @@ publish.workspace = true
 agent-client-protocol.workspace = true
 history.workspace = true
 ignore.workspace = true
+getrandom.workspace = true
 protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["process", "io-util", "sync", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]
 blake3.workspace = true
 futures-util.workspace = true
-serde_json.workspace = true
-tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]
