@@ -21,7 +21,7 @@ message boundaries. Limits:
 | --- | --- |
 | Input/output JSON frame, excluding LF | 1 MiB in UTF-8 bytes |
 | Concurrent work requests | 32 |
-| Distinct request IDs per connection | 4,096, then reconnect |
+| Distinct request IDs per connection | 65,536, then reconnect (expanded in B08 for session polling) |
 | Default / maximum request timeout | 30,000 ms / 30,000 ms |
 | Minimum timeout | 1 ms |
 | Blocked output write | 5 seconds, then terminate |
@@ -59,7 +59,9 @@ cancellation is always enabled. B06 enables `persistentEvents` when the engine
 is launched with `--project-root PATH` (and optionally `--data-root PATH` for
 tests). The canonical project history is opened at launch, before initialization.
 Bare stdio launches remain side-effect free and advertise no durable events.
-Agent sessions and idempotent mutation endpoints remain false; no agent is spawned.
+B08 Unix project-bound engines advertise `agentSessions`; an agent starts only
+after an explicit `sessions.start`. Idempotent mutation endpoints remain false.
+See [B08 session methods and admission semantics](acp-agent-sessions.md#ipc-additions).
 
 The v1 version integer denotes the major wire contract; additive fields and
 capabilities do not change it. Unsupported versions fail explicitly and allow a
@@ -138,7 +140,8 @@ a conflict; same key/same digest returns the existing receipt. A host timeout or
 disconnect says nothing about whether a future durable mutation happened. Query
 the receipt before retrying; never generate a new key just because transport failed.
 Cancellation is not a rollback guarantee. B06 advertises durable read handlers
-only when a real history store is open. Mutation endpoints remain unimplemented.
+only when a real history store is open. B08 session commands are not idempotent:
+their acknowledgements mean admission, and automatic mutation retries are forbidden.
 
 ## Schema and validation
 

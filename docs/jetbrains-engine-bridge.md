@@ -2,6 +2,11 @@
 
 Branch: `feat/jetbrains-engine-bridge`. Depends on B03–B05.
 
+This document records the B06 bridge milestone. B08 extends it with
+[ACP sessions](acp-agent-sessions.md), a Session tab, a bounded command queue,
+additional native-auth environment forwarding and agent teardown before the
+engine acknowledges shutdown.
+
 ## Implemented behavior
 
 The Flow tool window gets a project-level `EngineService`. Its injected coroutine
@@ -25,7 +30,8 @@ Requests are serialized by the controller. Stderr is drained into a fixed buffer
 and discarded, avoiding unbounded output and sensitive error text in the UI.
 Timeouts enqueue cancellation best-effort, then the supervisor closes the connection.
 Shutdown owns stream readers/writers and waits for process exit; observed descendants
-are terminated too. The current Rust sidecar launches no agents. This is not an
+are terminated too. B06 itself launches no agents; B08 delegates adapter process
+groups to the ACP SDK. This is not an
 OS sandbox or a general guarantee against arbitrary detached processes.
 
 After a failure, reconnect waits 250, 500 and 1,000 ms, then stops after three
@@ -68,7 +74,9 @@ their own paginated queries; this milestone does not fabricate them from events.
 
 `./gradlew runIde` builds the Rust engine and passes the absolute debug executable
 path automatically. The engine runs in the canonical open project directory with
-only HOME, PATH, TMPDIR, LANG and LC_ALL inherited; no model credentials are needed.
+an explicit environment allowlist. B06 needed only HOME, PATH, TMPDIR, LANG and
+LC_ALL; B08 additionally forwards native-auth, proxy, certificate and existing
+Codex sandbox variables. Engine health checks require no model credentials.
 
 ```sh
 cd integrations/jetbrains

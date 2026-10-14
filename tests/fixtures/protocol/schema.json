@@ -1,5 +1,159 @@
 {
   "$defs": {
+    "AgentActivity": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "type": "object"
+    },
+    "AgentCommand": {
+      "properties": {
+        "prompt": {
+          "default": "",
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "AgentPermission": {
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/PermissionChoice"
+          },
+          "type": "array"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "title",
+        "toolCallId",
+        "options"
+      ],
+      "type": "object"
+    },
+    "AgentStart": {
+      "properties": {
+        "arguments": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "authMethod": {
+          "description": "Optional explicit SDK authentication method. Existing native login is default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit": {
+          "type": "string"
+        },
+        "executable": {
+          "description": "Host-selected absolute executable; never read from repository config.",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "executable",
+        "commit",
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "AgentView": {
+      "properties": {
+        "activity": {
+          "items": {
+            "$ref": "#/$defs/AgentActivity"
+          },
+          "type": "array"
+        },
+        "agentInfo": true,
+        "authMethods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": true,
+        "permissions": {
+          "items": {
+            "$ref": "#/$defs/AgentPermission"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "upstreamSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "agentInfo",
+        "capabilities",
+        "authMethods",
+        "activity",
+        "permissions"
+      ],
+      "type": "object"
+    },
     "CancelParams": {
       "properties": {
         "id": {
@@ -253,6 +407,13 @@
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "sessions.baseline",
+        "sessions.start",
+        "sessions.active",
+        "sessions.prompt",
+        "sessions.cancel",
+        "sessions.close",
+        "permissions.respond",
         "engine.initialize",
         "engine.health",
         "state.snapshot",
@@ -323,6 +484,42 @@
       "required": [
         "jsonrpc",
         "method"
+      ],
+      "type": "object"
+    },
+    "PermissionChoice": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PermissionDecision": {
+      "properties": {
+        "optionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "requestId"
       ],
       "type": "object"
     },
@@ -533,6 +730,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A schema catalogue, not an additional wire envelope. Review generated changes.",
   "properties": {
+    "agentCommand": {
+      "$ref": "#/$defs/AgentCommand"
+    },
+    "agentStart": {
+      "$ref": "#/$defs/AgentStart"
+    },
+    "agentView": {
+      "$ref": "#/$defs/AgentView"
+    },
     "cancelParams": {
       "$ref": "#/$defs/CancelParams"
     },
@@ -559,6 +765,9 @@
     },
     "notification": {
       "$ref": "#/$defs/Notification"
+    },
+    "permissionDecision": {
+      "$ref": "#/$defs/PermissionDecision"
     },
     "replayPage": {
       "$ref": "#/$defs/ReplayPage"
@@ -590,7 +799,11 @@
     "snapshot",
     "replayParams",
     "replayPage",
-    "mutationReceipt"
+    "mutationReceipt",
+    "agentStart",
+    "agentCommand",
+    "permissionDecision",
+    "agentView"
   ],
   "title": "Contract",
   "type": "object"

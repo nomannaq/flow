@@ -10,12 +10,13 @@ isolation, project context, and native review tools around them.
 **Status: early development.** The repository currently contains the Rust
 workspace, durable history storage, isolated clean-commit worktree preparation,
 versioned stdio engine protocol, and a native Swing tool window connected to a
-project-scoped Rust engine. Agent
-execution and the review features below remain planned.
+project-scoped Rust engine. B08 adds ACP agent sessions, streaming activity,
+one-time permission controls and cancellation. Verified edit recording and
+native historical review remain upcoming milestones.
 
 The B07 Rust workspace-preparation API and manual exercise are documented in
-[Isolated session worktrees](docs/isolated-session-worktrees.md). Agent sessions
-and their IDE controls follow in B08.
+[Isolated session worktrees](docs/isolated-session-worktrees.md). See
+[ACP agent sessions](docs/acp-agent-sessions.md) to run an adapter from the native UI.
 
 ## Planned features
 
@@ -47,9 +48,9 @@ Use a native Kotlin/Swing tool window for prompts, streamed activity, permission
 requests, and session navigation. Open diffs in the IDE's editor area and use
 JetBrains' existing navigation, merge, and commit workflows.
 
-Codex is the first planned agent integration through ACP; Claude Code support
-will follow. Flow will preserve each adapter's capabilities and use the agent's
-own authentication and permission mechanisms.
+The experimental ACP session controls target Codex first; Claude Code support
+will follow. Flow retains adapter capabilities and uses the agent's own
+authentication and permission mechanisms.
 
 ### Give agents useful project context
 
@@ -137,6 +138,16 @@ milestones.
 
 ## Development
 
+### ACP agent sessions (B08)
+
+Run the development IDE below and open **Flow → Session**. Select an installed
+ACP adapter, enter its arguments as a JSON array, click **Use current commit**,
+and submit a task. Flow creates an isolated worktree and shows activity and
+permission controls. Follow-ups reuse that session; cancellation and closure
+retain partial work. The [B08 guide](docs/acp-agent-sessions.md) covers setup,
+authentication, limits and validation. Verified filesystem operation recording
+arrives in B09; agent tool events alone do not increment recorded-operation counts.
+
 ### Native engine bridge (B06)
 
 Opening Flow starts one Rust engine for that project and shows its connection
@@ -182,8 +193,8 @@ removing the workflow files does not delete historical GitHub run records.
 The `history` crate now stores immutable manifests and BLAKE3/zstd content,
 with SQLite metadata, durable events and mutation receipts on one bounded writer
 thread. It preserves file modes/types, detects damaged content and backs up older
-schemas before migration. Storage is outside the repository; capturing agent
-edits and connecting the store to the IDE remain later milestones.
+schemas before migration. Storage is outside the repository and connected to the
+IDE; verified capture of agent edits remains B09.
 
 See the [storage reference](docs/history-storage.md) for the publication order,
 API boundaries, retry rules, limits and crash-recovery tests.
@@ -196,7 +207,7 @@ The Rust executable now serves Flow JSON-RPC v1 over bounded newline-delimited
 stdio. Initialize the connection, use its returned epoch for health/shutdown
 requests, and send `requests.cancel` notifications to cancel pending requests.
 Project-bound launches also expose state snapshots and durable event replay;
-agent sessions remain later milestones. The [protocol reference](docs/engine-protocol.md) defines
+B08 also exposes session and permission methods. The [protocol reference](docs/engine-protocol.md) defines
 the wire format, limits, errors, cancellation and mutation retry rules.
 
 Kotlin has explicit protocol DTOs and connection-local reply correlation. Shared
