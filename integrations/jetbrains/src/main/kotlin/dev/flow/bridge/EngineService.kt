@@ -19,10 +19,10 @@ class EngineService(private val project: Project, internal val scope: CoroutineS
         ProcessBuilder(executable.toString(), "--project-root", directory.toString())
             .directory(directory.toFile())
             .apply {
-                // No authentication is needed by the sidecar. Agents are introduced in B08.
+                // Native adapter authentication stays outside Flow storage and logs.
                 val inherited = environment().toMap()
                 environment().clear()
-                for (name in listOf("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL")) {
+                for (name in listOf("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL", "TERM", "CODEX_HOME", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_API_KEY", "OPENAI_API_KEY", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "__CF_USER_TEXT_ENCODING")) {
                     inherited[name]?.let { environment()[name] = it }
                 }
             }.start()

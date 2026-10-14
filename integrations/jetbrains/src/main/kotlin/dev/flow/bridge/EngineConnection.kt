@@ -121,7 +121,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
 
     suspend fun close() = withContext(NonCancellable + Dispatchers.IO) {
         if (process.isAlive && tracker != null && reader.isActive && writer.isActive) {
-            runCatching { request("engine.shutdown", timeoutMs = 250) }
+            runCatching { request("engine.shutdown", timeoutMs = 10000) }
         }
         tracker?.disconnect()
         outgoing.close()

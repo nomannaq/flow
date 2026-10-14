@@ -23,6 +23,93 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class EngineBridgeTest {
     @Test
+    fun nativeControllerRunsAgentAndBindsPermissionDecision() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("flow-agent-ui-")
+        val project = Files.createDirectory(root.resolve("project"))
+        val data = Files.createDirectory(root.resolve("data"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val processes = CopyOnWriteArrayList<Process>()
+        fun git(vararg arguments: String) {
+            val process = ProcessBuilder(listOf("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "user.name=Flow", "-c", "user.email=fixture@example.invalid") + arguments)
+                .directory(project.toFile()).redirectErrorStream(true).start()
+            process.inputStream.readAllBytes()
+            assertEquals(0, process.waitFor())
+        }
+        try {
+            git("init")
+            Files.writeString(project.resolve("tracked.txt"), "developer baseline")
+            git("add", ".")
+            val controller = EngineController(scope, ProjectId("agent-test"), launchProcess = {
+                ProcessBuilder(requireNotNull(System.getProperty("flow.test.engine")), "--project-root", project.toString(), "--data-root", data.toString())
+                    .start().also { processes.add(it) }
+            }, pollMs = 25)
+            controller.start()
+            withTimeout(10000) { controller.view.first { it.connected } }
+            // An unborn repository must explain why the commit field cannot be filled.
+            controller.agentRequest("sessions.baseline")
+            val rejected = withTimeout(10000) { controller.view.first { it.actionError.contains("first commit") && !it.baselineLoading } }
+            assertTrue(rejected.baseline.isBlank())
+            assertEquals(0L, rejected.baselineRevision)
+            assertTrue(rejected.connected)
+            git("commit", "-m", "fixture")
+            controller.agentRequest("sessions.baseline")
+            val baseline = withTimeout(10000) { controller.view.first { it.baseline.isNotBlank() } }.baseline
+            // Re-selecting the same hash must still notify the UI to replace an edited field.
+            controller.agentRequest("sessions.baseline")
+            val repeated = withTimeout(10000) { controller.view.first { it.baselineRevision == 2L && !it.baselineLoading } }
+            assertEquals(baseline, repeated.baseline)
+            assertTrue(repeated.actionError.isEmpty())
+            val args = com.google.gson.JsonArray().apply { add(requireNotNull(System.getProperty("flow.test.adapterFixture"))) }
+            controller.agentRequest("sessions.start", AgentProtocol.start("/usr/bin/python3", args.toString(), baseline, "write probe", ""))
+            val waiting = withTimeout(15000) { controller.view.first { it.agent.permissions.isNotEmpty() } }
+            val permission = waiting.agent.permissions.single()
+            assertEquals(listOf("once"), permission.options.map { it.first })
+            controller.agentRequest("permissions.respond", AgentProtocol.permission(waiting.agent.id!!, permission.id, "once"))
+            val ready = withTimeout(10000) { controller.view.first { it.agent.status == "ready" } }
+            assertEquals("flow-probe-1\n", Files.readString(java.nio.file.Path.of(ready.agent.workspace!!).resolve("probe.txt")))
+            assertFalse(Files.exists(project.resolve("probe.txt")))
+            controller.agentRequest("sessions.close", AgentProtocol.command(ready.agent.id!!))
+            withTimeout(10000) { controller.view.first { it.agent.status == "closed" } }
+        } finally {
+            scope.cancel()
+            withTimeout(15000) { scope.coroutineContext[kotlinx.coroutines.Job]!!.join() }
+            processes.forEach { if (it.isAlive) it.destroyForcibly() }
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun agentCommandsAndPermissionsUseTypedSessionIdentity() {
+        val golden = ProtocolJson.parse(javaClass.getResourceAsStream("/golden.json")!!.bufferedReader().readText())
+        val view = AgentProtocol.view(golden.getAsJsonObject("agentView"))
+        assertEquals("session-fixture", view.id)
+        assertEquals("once", view.permissions.single().options.single().first)
+        assertTrue(view.activity.single().contains("日本語"))
+        assertEquals(golden["agentStart"], AgentProtocol.start("/opt/flow/codex-acp", "[\"-c\",\"model=\\\"example\\\"\"]", "a".repeat(40), "Implement the fixture", "").apply { add("authMethod", JsonNull.INSTANCE) })
+        val decision = AgentProtocol.permission(view.id!!, view.permissions.single().id, null)
+        assertTrue(decision["optionId"].isJsonNull)
+        assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[]", "HEAD", "task", "")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[4]", "a".repeat(40), "task", "")
+        }
+        val missingCommit = assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[]", "", "task", "")
+        }
+        assertTrue(missingCommit.message!!.contains("Use current commit"))
+        val missingPrompt = assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[]", "a".repeat(40), "", "")
+        }
+        assertTrue(missingPrompt.message!!.contains("prompt box"))
+        val badArguments = assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[secret", "a".repeat(40), "task", "")
+        }
+        assertTrue(badArguments.message!!.contains("JSON array"))
+        assertFalse(badArguments.message!!.contains("secret"))
+    }
+
+    @Test
     fun boundedFramesAndReplayRejectCorruption() {
         assertEquals("hello", EngineConnection.readFrame(ByteArrayInputStream("hello\n".toByteArray())))
         assertNull(EngineConnection.readFrame(ByteArrayInputStream(byteArrayOf())))
