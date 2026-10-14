@@ -8,9 +8,14 @@ developer in control. Existing agents handle coding; Flow provides workspace
 isolation, project context, and native review tools around them.
 
 **Status: early development.** The repository currently contains the Rust
-workspace, durable history storage, versioned stdio engine protocol, and a
-native Swing tool window connected to a project-scoped Rust engine. Agent
+workspace, durable history storage, isolated clean-commit worktree preparation,
+versioned stdio engine protocol, and a native Swing tool window connected to a
+project-scoped Rust engine. Agent
 execution and the review features below remain planned.
+
+The B07 Rust workspace-preparation API and manual exercise are documented in
+[Isolated session worktrees](docs/isolated-session-worktrees.md). Agent sessions
+and their IDE controls follow in B08.
 
 ## Planned features
 
