@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.BorderLayout
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.JTabbedPane
 
 class WorkbenchToolWindowFactory :
     ToolWindowFactory,
@@ -35,6 +36,7 @@ class WorkbenchToolWindowFactory :
         val controller = service.controller
         val status = JBLabel("Connecting to engine…")
         val details = JBList<String>()
+        val sessions = AgentSessionPanel(controller)
         val actions = DefaultActionGroup(
             object : DumbAwareAction("Check Engine Health", "Ask the Rust engine for its status", null) {
                 init {
@@ -56,7 +58,13 @@ class WorkbenchToolWindowFactory :
         val panel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             border = JBUI.Borders.empty(12)
             add(status, BorderLayout.NORTH)
-            add(JBScrollPane(details), BorderLayout.CENTER)
+            add(
+                JTabbedPane().apply {
+                    addTab("Session", sessions)
+                    addTab("Engine", JBScrollPane(details))
+                },
+                BorderLayout.CENTER,
+            )
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("Flow.Workbench", actions, true)
         toolbar.targetComponent = panel
@@ -70,6 +78,7 @@ class WorkbenchToolWindowFactory :
                 withContext(Dispatchers.EDT) {
                     if (!disposed.get()) {
                         status.text = view.status
+                        sessions.update(view)
                         details.setListData(
                             arrayOf(
                                 view.pid?.let { "Engine PID: $it" } ?: "Engine offline",

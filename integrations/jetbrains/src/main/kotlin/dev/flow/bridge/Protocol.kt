@@ -10,7 +10,7 @@ import com.google.gson.Strictness
 const val FLOW_PROTOCOL_VERSION = 1
 const val FLOW_MAX_FRAME_BYTES = 1024 * 1024
 const val FLOW_MAX_IN_FLIGHT = 32
-const val FLOW_MAX_CONNECTION_REQUESTS = 4096
+const val FLOW_MAX_CONNECTION_REQUESTS = 65536
 const val FLOW_MAX_TIMEOUT_MS = 30_000L
 
 private val opaqueIdPattern = Regex("[A-Za-z0-9._:-]{1,128}")
