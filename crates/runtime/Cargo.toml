@@ -16,6 +16,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 blake3.workspace = true
+futures-util.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -118,6 +118,10 @@ def fixture_suite():
     assert any(event["event"] == "session.cancel.acknowledged" for event in report["events"])
     run("cancel-ignored", "cancel", ("--timeout-seconds", "3"), ("--never-cancel",), "timed_out")
     run("crash", "inspect", fixture_flags=("--crash",), expected="failed")
+    report_path, report = run("partial-write-crash", "edit", ("--allow-once",), ("--partial-crash",), "failed")
+    assert (report_path.parent / "workspace/probe.txt").read_bytes() == b"partial"
+    assert (report_path.parent / "checkpoint-0.txt").read_bytes() == b"flow-probe-0\n"
+    assert not (report_path.parent / "checkpoint-1.txt").exists()
     _, report = run("worker-panic", "session", ("--timeout-seconds", "20"), ("--worker-panic",), "failed")
     assert report["failureReason"] == "adapter_panic"
     assert report["elapsedMs"] < 10000, "worker panic must fail before the request timeout"

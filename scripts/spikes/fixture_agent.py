@@ -93,6 +93,10 @@ for line in sys.stdin:
     elif request_id == "permission" and pending_edit is not None:
         outcome = message["result"]["outcome"]
         if outcome.get("optionId") == "once":
+            if "--partial-crash" in sys.argv:
+                # B05: die after a real write, before the completion notification.
+                (workspace / "probe.txt").write_bytes(b"partial")
+                os._exit(7)
             value = "incorrect" if "--bad-checkpoint" in sys.argv else f"flow-probe-{sequence}"
             if "overlapping writers" in pending_prompt:
                 for delay, number in [(1, 1), (2, 2)]:

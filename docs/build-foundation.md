@@ -22,17 +22,15 @@ organizing the branches. No commit is made by this work, including the plan.
   `ktlintCheck`; `ktlintFormat` applies formatting explicitly.
 - Gradle uses strict dependency locking. Plugin Verifier 1.410 targets the
   current pinned IDEA build, not a moving recommended-build list.
-- GitHub Actions has Rust/ACP and native-plugin jobs on `macos-15`, with an arm64
-  assertion. Native validation builds a development ZIP, runs the platform tests
-  and Plugin Verifier, and rejects missing, failed or skipped test reports.
-  It uploads validation reports only; publishing remains B28.
-- CI runs existing ACP protocol fixtures without credentials. Flow IPC fixtures
-  will arrive with the actual versioned contract in B03; the protocol crate is
-  still empty and no protocol test coverage is claimed for it.
+- B02 originally added GitHub Actions jobs. The workflow definitions were removed
+  at the user's request during B05. Run Rust/ACP checks and native validation
+  manually using the commands below. Historical hosted runs are unchanged.
+- ACP fixtures run without credentials. B03 added shared IPC contract fixtures;
+  B05 adds SDK agent and repository fixtures described in [the fixture guide](testing-fixtures.md).
 
 The IDE supplies Kotlin stdlib and coroutines. Do not add another runtime copy
-when implementing the bridge. In repository settings, require both build jobs
-before merging; adding workflow YAML alone cannot change branch protection.
+when implementing the bridge. Existing repository branch protection settings
+are not changed by removing workflow files.
 
 ## First native dependency baseline
 
@@ -64,7 +62,7 @@ Then run verification without generation flags:
 ./gradlew runIde
 ```
 
-CI requires both generated files and never generates or updates them itself.
+Routine validation uses both generated files without regenerating them.
 If the first baseline command fails partway through, resolve the reported issue
 and rerun it; partial generated files are not a completed baseline. Native tests
 and Plugin Verifier must pass before B02 closes. The retained `until-build=253.*`
@@ -153,6 +151,6 @@ has three tests with no failures/errors/skips, and Plugin Verifier still reports
 compatibility with four deprecated and six experimental API usages. Up-to-date
 tasks reuse their prior outputs; this is not a clean-checkout validation.
 
-Remaining B02 build acceptance: validate a clean checkout in the required
-CI jobs. This editing environment still cannot write the Gradle cache or resolve
+Remaining B02 build acceptance: validate a clean checkout on the supported host.
+This editing environment still cannot write the Gradle cache or resolve
 Maven downloads. B01's two open checks remain separate follow-ups.
