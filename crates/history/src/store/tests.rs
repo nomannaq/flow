@@ -32,6 +32,51 @@ impl Fixture {
 fn key(s: &str) -> MutationKey {
     MutationKey::try_from(s.to_owned()).unwrap()
 }
+
+#[test]
+fn agent_recovery_interrupts_live_records_without_replaying_permissions() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    fixture.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("capture"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    store
+        .bind_agent(
+            sid(),
+            "native-session".into(),
+            "1.2".into(),
+            value!({"loadSession":true}),
+        )
+        .unwrap();
+    store
+        .agent_event(
+            sid(),
+            Some("turn-1".into()),
+            "running".into(),
+            "permission.requested".into(),
+            value!({"requestId":"expired"}),
+        )
+        .unwrap();
+    drop(store);
+    let reopened = fixture.open();
+    reopened.interrupt_agent_sessions().unwrap();
+    assert_eq!(reopened.get_session(sid()).unwrap().status, "interrupted");
+    assert_eq!(
+        reopened.get_session(sid()).unwrap().upstream_id.as_deref(),
+        Some("native-session")
+    );
+    assert_eq!(
+        reopened.get_turn("turn-1".into()).unwrap().status,
+        "interrupted"
+    );
+    let first = reopened.snapshot().unwrap().high_water;
+    reopened.interrupt_agent_sessions().unwrap();
+    assert_eq!(reopened.snapshot().unwrap().high_water, first);
+}
 fn ws() -> WorkspaceId {
     WorkspaceId::try_from("worktree-1".to_owned()).unwrap()
 }

@@ -329,6 +329,124 @@ impl HistoryStore {
             )
         })
     }
+    /// Persist runtime transitions and bounded agent events without claiming
+    /// tool-reported edits are verified filesystem operations.
+    pub fn agent_event(
+        &self,
+        session: SessionId,
+        turn: Option<String>,
+        status: String,
+        kind: String,
+        payload: Value,
+    ) -> Result<()> {
+        identifier(&status)?;
+        identifier(&kind)?;
+        if json(&payload)?.len() > 32 * 1024 {
+            return Err(Error::Invalid("agent event exceeds limit"));
+        }
+        self.call(move |db| {
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut record: Session = load_record(
+                &tx,
+                "SELECT record FROM sessions WHERE id=?1",
+                session.as_str(),
+            )?;
+            record.status = status.clone();
+            tx.execute(
+                "UPDATE sessions SET record=?2 WHERE id=?1",
+                params![session.as_str(), json(&record)?],
+            )?;
+            if let Some(turn) = turn {
+                let mut record: Turn =
+                    load_record(&tx, "SELECT record FROM turns WHERE id=?1", &turn)?;
+                if record.session_id != session {
+                    return Err(Error::Conflict);
+                }
+                record.status = status;
+                tx.execute(
+                    "UPDATE turns SET record=?2 WHERE id=?1",
+                    params![turn, json(&record)?],
+                )?;
+            }
+            event(&tx, &record.workspace_id, Some(&session), &kind, payload)?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+    pub fn bind_agent(
+        &self,
+        id: SessionId,
+        upstream: String,
+        version: String,
+        capabilities: Value,
+    ) -> Result<()> {
+        self.call(move |db| {
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut record: Session =
+                load_record(&tx, "SELECT record FROM sessions WHERE id=?1", id.as_str())?;
+            record.upstream_id = Some(upstream);
+            record.adapter_version = version;
+            record.capabilities = capabilities;
+            tx.execute(
+                "UPDATE sessions SET record=?2 WHERE id=?1",
+                params![id.as_str(), json(&record)?],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+    /// New engine never silently resumes a previous process or its approvals.
+    pub fn interrupt_agent_sessions(&self) -> Result<()> {
+        self.call(|db| {
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let records: Vec<String> = tx
+                .prepare("SELECT record FROM sessions")?
+                .query_map([], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            for raw in records {
+                let mut session: Session = decode(&raw)?;
+                if !["running", "ready", "starting", "cancelling"]
+                    .contains(&session.status.as_str())
+                {
+                    continue;
+                }
+                session.status = "interrupted".into();
+                tx.execute(
+                    "UPDATE sessions SET record=?2 WHERE id=?1",
+                    params![session.id.as_str(), json(&session)?],
+                )?;
+                let turns: Vec<String> = tx
+                    .prepare("SELECT record FROM turns WHERE session_id=?1")?
+                    .query_map([session.id.as_str()], |r| r.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                for raw in turns {
+                    let mut turn: Turn = decode(&raw)?;
+                    if ["running", "cancelling"].contains(&turn.status.as_str()) {
+                        turn.status = "interrupted".into();
+                        tx.execute(
+                            "UPDATE turns SET record=?2 WHERE id=?1",
+                            params![turn.id, json(&turn)?],
+                        )?;
+                    }
+                }
+                event(
+                    &tx,
+                    &session.workspace_id,
+                    Some(&session.id),
+                    "session.interrupted",
+                    value!({}),
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
     pub fn get_turn(&self, id: String) -> Result<Turn> {
         self.call(move |db| load_record(&db.conn, "SELECT record FROM turns WHERE id=?1", &id))
     }

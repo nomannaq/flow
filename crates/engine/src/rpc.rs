@@ -45,6 +45,29 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     writer: W,
     store: Option<history::HistoryStore>,
 ) -> io::Result<()> {
+    #[cfg(unix)]
+    let mut agents = store.clone().map(runtime::agents::AgentHost::new);
+    let result = serve_connection(
+        reader,
+        writer,
+        store,
+        #[cfg(unix)]
+        &mut agents,
+    )
+    .await;
+    #[cfg(unix)]
+    if let Some(host) = &mut agents {
+        host.shutdown().await;
+    }
+    result
+}
+
+async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    reader: R,
+    writer: W,
+    store: Option<history::HistoryStore>,
+    #[cfg(unix)] agents: &mut Option<runtime::agents::AgentHost>,
+) -> io::Result<()> {
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
     let epoch = EngineEpoch::try_from(
@@ -64,6 +87,10 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut shutdown = None;
     loop {
         if closing && jobs.is_empty() {
+            #[cfg(unix)]
+            if let Some(host) = agents.as_mut() {
+                host.shutdown().await;
+            }
             if let Some(id) = shutdown.take() {
                 send(
                     &mut output,
@@ -166,7 +193,7 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         protocol_version: PROTOCOL_VERSION, engine_version: env!("CARGO_PKG_VERSION").into(),
                         epoch: epoch.clone(), project_id: params.project_id.clone(),
                         capabilities: EngineCapabilities { cancellation: true, persistent_events: store.is_some(),
-                            idempotent_mutations: false, agent_sessions: false },
+                            idempotent_mutations: false, agent_sessions: cfg!(unix) && store.is_some() },
                         max_frame_bytes: MAX_FRAME_BYTES, max_in_flight: MAX_IN_FLIGHT,
                         max_connection_requests: MAX_CONNECTION_REQUESTS,
                         default_timeout_ms: DEFAULT_TIMEOUT_MS, max_timeout_ms: MAX_TIMEOUT_MS,
@@ -182,6 +209,51 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     send(&mut output, failure(error::STALE_EPOCH)).await?; continue;
                 }
                 match Method::parse(&request.method) {
+                    #[cfg(unix)]
+                    Some(Method::SessionBaseline) => {
+                        let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
+                        if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
+                        let token = CancellationToken::new(); pending.insert(id.clone(),token.clone());
+                        let epoch = epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            let result = tokio::select! {
+                                _ = token.cancelled() => Err(error::CANCELLED),
+                                result = timeout(Duration::from_millis(timeout_ms),runtime::agents::baseline(store)) => match result {
+                                    Ok(Ok(commit)) => Ok(serde_json::json!({"commit":commit})),
+                                    Ok(Err(_)) => Err(error::INVALID_PARAMS),
+                                    Err(_) => Err(error::TIMEOUT),
+                                }
+                            };
+                            let response = match result {
+                                Ok(value) => Response::success(id.clone(),epoch,value),
+                                Err(code) => Response::failure(Some(id.clone()),Some(epoch),code),
+                            };
+                            (id,response)
+                        }));
+                    }
+                    #[cfg(unix)]
+                    Some(method @ (Method::SessionStart | Method::SessionActive | Method::SessionPrompt | Method::SessionCancel | Method::SessionClose | Method::PermissionRespond)) => {
+                        let Some(host) = agents.as_mut() else {
+                            send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
+                        };
+                        let result: Result<Value, ()> = match method {
+                            Method::SessionActive => serde_json::to_value(host.view()).map_err(|_| ()),
+                            Method::SessionStart => serde_json::from_value::<AgentStart>(request.params).map_err(|_| ())
+                                .and_then(|params| host.start(params).map(|id| serde_json::json!({"sessionId":id})).map_err(|_| ())),
+                            Method::PermissionRespond => serde_json::from_value::<PermissionDecision>(request.params).map_err(|_| ())
+                                .and_then(|params| host.permission(params).map(|()| Value::Null).map_err(|_| ())),
+                            _ => serde_json::from_value::<AgentCommand>(request.params).map_err(|_| ())
+                                .and_then(|params| {
+                                    let result = if method == Method::SessionClose { host.close(&params.session_id) }
+                                        else { host.command(params, method == Method::SessionCancel) };
+                                    result.map(|()| Value::Null).map_err(|_| ())
+                                }),
+                        };
+                        match result {
+                            Ok(value) => send(&mut output, Response::success(id, epoch.clone(), value)).await?,
+                            Err(()) => send(&mut output, failure(error::INVALID_PARAMS)).await?,
+                        }
+                    }
                     Some(method @ (Method::Snapshot | Method::Replay)) => {
                         let Some(store) = store.clone() else {
                             send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
