@@ -106,6 +106,8 @@ data class DurableEvent(
     val kind: String,
     val payload: JsonElement,
 )
+data class StateSnapshot(val highWater: EventCursor, val sessions: Long, val operations: Long)
+data class ReplayPage(val events: List<DurableEvent>, val highWater: EventCursor, val hasMore: Boolean)
 data class MutationReceipt(val key: String, val requestDigest: String, val status: String, val outcome: JsonElement?) {
     // An unrecognized future status must never be treated as successful.
     val isTerminalSuccess: Boolean get() = status == "succeeded"
@@ -251,6 +253,28 @@ object ProtocolJson {
     }
     fun health(o: JsonObject): HealthResult = HealthResult(o.int("protocolVersion"), o.string("engineVersion"), ProjectId(o.string("projectId")))
     fun cursor(o: JsonObject): EventCursor = EventCursor(o.string("storeId"), o.string("sequence"))
+    fun snapshot(o: JsonObject): StateSnapshot {
+        val state = o.required("state").objectValue()
+        val sessions = state.integer("sessions")
+        val operations = state.integer("operations")
+        require(sessions >= 0 && operations >= 0)
+        return StateSnapshot(cursor(o.required("highWater").objectValue()), sessions, operations)
+    }
+    fun replayParams(cursor: EventCursor): JsonObject = JsonObject().apply {
+        add(
+            "after",
+            JsonObject().apply {
+                addProperty("storeId", cursor.storeId)
+                addProperty("sequence", cursor.sequence)
+            },
+        )
+        addProperty("limit", 100)
+    }
+    fun replay(o: JsonObject): ReplayPage {
+        val events = o.required("events")
+        require(events.isJsonArray && events.asJsonArray.size() <= 100)
+        return ReplayPage(events.asJsonArray.map { event(it.objectValue()) }, cursor(o.required("highWater").objectValue()), o.bool("hasMore"))
+    }
     fun event(o: JsonObject): DurableEvent = DurableEvent(
         cursor(o.required("cursor").objectValue()),
         o.int("schemaVersion"),

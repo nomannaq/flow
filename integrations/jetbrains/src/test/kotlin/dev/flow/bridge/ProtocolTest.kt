@@ -55,6 +55,15 @@ class ProtocolTest {
         assertEquals("18446744073709551615", ProtocolJson.event(event).cursor.sequence)
         assertEquals("future.event", ProtocolJson.event(event).kind)
         assertTrue(ProtocolJson.receipt(fixtures["mutationReceipt"].asJsonObject).isTerminalSuccess)
+        val snapshot = ProtocolJson.snapshot(fixtures["stateSnapshot"].asJsonObject)
+        assertEquals(2L, snapshot.sessions)
+        assertEquals(3L, snapshot.operations)
+        assertEquals("18446744073709551615", snapshot.highWater.sequence)
+        val replay = ProtocolJson.replay(fixtures["replayPage"].asJsonObject)
+        assertEquals(snapshot.highWater, replay.highWater)
+        assertEquals(1, replay.events.size)
+        assertFalse(replay.hasMore)
+        assertEquals(fixtures["replayParams"], ProtocolJson.replayParams(EventCursor("store-fixture", "9007199254740993")))
 
         // Manual Kotlin DTOs are tied to Rust's exported schema and shared values.
         val defs = resource("schema.json")["\$defs"].asJsonObject

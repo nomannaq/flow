@@ -69,6 +69,10 @@ pub enum Method {
     Initialize,
     #[serde(rename = "engine.health")]
     Health,
+    #[serde(rename = "state.snapshot")]
+    Snapshot,
+    #[serde(rename = "events.replay")]
+    Replay,
     #[serde(rename = "engine.shutdown")]
     Shutdown,
     #[serde(rename = "requests.cancel")]
@@ -79,6 +83,8 @@ impl Method {
         match name {
             "engine.initialize" => Some(Self::Initialize),
             "engine.health" => Some(Self::Health),
+            "state.snapshot" => Some(Self::Snapshot),
+            "events.replay" => Some(Self::Replay),
             "engine.shutdown" => Some(Self::Shutdown),
             "requests.cancel" => Some(Self::Cancel),
             _ => None,
@@ -202,6 +208,7 @@ pub mod error {
     pub const INVALID_REQUEST: i32 = -32600;
     pub const METHOD_NOT_FOUND: i32 = -32601;
     pub const INVALID_PARAMS: i32 = -32602;
+    pub const INTERNAL: i32 = -32603;
     pub const NOT_INITIALIZED: i32 = -32001;
     pub const INCOMPATIBLE_VERSION: i32 = -32002;
     pub const ALREADY_INITIALIZED: i32 = -32003;

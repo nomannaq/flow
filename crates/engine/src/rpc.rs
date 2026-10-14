@@ -37,6 +37,14 @@ pub async fn serve<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     reader: R,
     writer: W,
 ) -> io::Result<()> {
+    serve_with_store(reader, writer, None).await
+}
+
+pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    reader: R,
+    writer: W,
+    store: Option<history::HistoryStore>,
+) -> io::Result<()> {
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
     let epoch = EngineEpoch::try_from(
@@ -157,7 +165,7 @@ pub async fn serve<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     let result = InitializeResult {
                         protocol_version: PROTOCOL_VERSION, engine_version: env!("CARGO_PKG_VERSION").into(),
                         epoch: epoch.clone(), project_id: params.project_id.clone(),
-                        capabilities: EngineCapabilities { cancellation: true, persistent_events: false,
+                        capabilities: EngineCapabilities { cancellation: true, persistent_events: store.is_some(),
                             idempotent_mutations: false, agent_sessions: false },
                         max_frame_bytes: MAX_FRAME_BYTES, max_in_flight: MAX_IN_FLIGHT,
                         max_connection_requests: MAX_CONNECTION_REQUESTS,
@@ -174,6 +182,50 @@ pub async fn serve<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     send(&mut output, failure(error::STALE_EPOCH)).await?; continue;
                 }
                 match Method::parse(&request.method) {
+                    Some(method @ (Method::Snapshot | Method::Replay)) => {
+                        let Some(store) = store.clone() else {
+                            send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
+                        };
+                        let query = if method == Method::Replay {
+                            match serde_json::from_value::<ReplayParams>(request.params) {
+                                Ok(query) if (1..=100).contains(&query.limit) => Some(query),
+                                _ => { send(&mut output, failure(error::INVALID_PARAMS)).await?; continue; }
+                            }
+                        } else { None };
+                        if pending.len() >= MAX_IN_FLIGHT {
+                            send(&mut output, failure(error::BUSY)).await?; continue;
+                        }
+                        let token = CancellationToken::new();
+                        pending.insert(id.clone(), token.clone());
+                        let epoch = epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            let work = tokio::task::spawn_blocking(move || {
+                                let value = match query {
+                                    Some(query) => store.replay(&query).and_then(|v| serde_json::to_value(v).map_err(|_| history::Error::CorruptMetadata)),
+                                    None => store.snapshot().and_then(|v| serde_json::to_value(v).map_err(|_| history::Error::CorruptMetadata)),
+                                };
+                                value.map_err(|error| match error {
+                                    history::Error::InvalidCursor => error::INVALID_PARAMS,
+                                    history::Error::Busy => error::BUSY,
+                                    _ => error::INTERNAL,
+                                })
+                            });
+                            let result = tokio::select! {
+                                biased;
+                                _ = token.cancelled() => Err(error::CANCELLED),
+                                result = timeout(Duration::from_millis(timeout_ms), work) => match result {
+                                    Ok(Ok(value)) => value,
+                                    Ok(Err(_)) => Err(error::INTERNAL),
+                                    Err(_) => Err(error::TIMEOUT),
+                                }
+                            };
+                            let response = match result {
+                                Ok(value) => Response::success(id.clone(), epoch, value),
+                                Err(code) => Response::failure(Some(id.clone()), Some(epoch), code),
+                            };
+                            (id, response)
+                        }));
+                    }
                     Some(Method::Shutdown) => {
                         closing = true;
                         shutdown = Some(id);
@@ -268,6 +320,84 @@ mod tests {
     }
     fn request(id: i64, method: &str, epoch: &Value, params: Value) -> Value {
         json!({"jsonrpc":"2.0","id":id,"method":method,"epoch":epoch,"params":params})
+    }
+
+    #[tokio::test]
+    async fn durable_snapshot_and_replay_survive_connection_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let data = temp.path().join("data");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::create_dir(project.join(".git")).unwrap();
+        std::fs::create_dir(&data).unwrap();
+        let store = history::HistoryStore::open(&project, &data).unwrap();
+        store
+            .register_workspace(
+                MutationKey::try_from("register".to_owned()).unwrap(),
+                history::Workspace {
+                    id: WorkspaceId::try_from("workspace".to_owned()).unwrap(),
+                    worktree_path: project.clone(),
+                    git_common_dir: project.join(".git"),
+                    base_commit: "a".repeat(40),
+                    owner_token: "owner".into(),
+                    lifecycle: "ready".into(),
+                },
+            )
+            .unwrap();
+        let mut high_water = None;
+        let mut previous_epoch = Value::Null;
+        for _ in 0..2 {
+            let (client, server) = tokio::io::duplex(4096);
+            let (read, write) = tokio::io::split(server);
+            let task = tokio::spawn(serve_with_store(read, write, Some(store.clone())));
+            let (read, write) = tokio::io::split(client);
+            let mut c = Client {
+                input: BufReader::new(read),
+                output: write,
+            };
+            c.send(json!({"jsonrpc":"2.0","id":"init","method":"engine.initialize","params":{
+                "protocolVersion":1,"clientName":"test","clientVersion":"test","projectId":"test"}})).await;
+            let reply = c.read().await;
+            assert_eq!(reply["result"]["capabilities"]["persistentEvents"], true);
+            let epoch = reply["epoch"].clone();
+            assert_ne!(epoch, previous_epoch);
+            previous_epoch = epoch.clone();
+            c.send(request(1, "state.snapshot", &epoch, json!({})))
+                .await;
+            let snapshot = c.read().await["result"].clone();
+            assert_eq!(snapshot["state"]["workspaces"], 1);
+            let cursor = snapshot["highWater"].clone();
+            if let Some(old) = &high_water {
+                assert_eq!(old, &cursor);
+            }
+            high_water = Some(cursor.clone());
+            let mut start = cursor.clone();
+            start["sequence"] = json!("0");
+            c.send(request(
+                2,
+                "events.replay",
+                &epoch,
+                json!({"after":start,"limit":1}),
+            ))
+            .await;
+            let replay = c.read().await;
+            assert_eq!(replay["result"]["events"].as_array().unwrap().len(), 1);
+            assert_eq!(replay["result"]["events"][0]["cursor"], cursor);
+            assert_eq!(replay["result"]["hasMore"], false);
+            start["storeId"] = json!("foreign");
+            c.send(request(
+                3,
+                "events.replay",
+                &epoch,
+                json!({"after":start,"limit":100}),
+            ))
+            .await;
+            assert_eq!(c.read().await["error"]["code"], error::INVALID_PARAMS);
+            c.send(request(4, "engine.shutdown", &epoch, json!({})))
+                .await;
+            assert!(c.read().await["result"].is_null());
+            task.await.unwrap().unwrap();
+        }
     }
 
     #[tokio::test]

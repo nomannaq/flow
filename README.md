@@ -9,8 +9,8 @@ isolation, project context, and native review tools around them.
 
 **Status: early development.** The repository currently contains the Rust
 workspace, durable history storage, versioned stdio engine protocol, and a
-placeholder Swing tool window. The features below are planned; agent execution
-and the IDE-to-engine bridge are not implemented yet.
+native Swing tool window connected to a project-scoped Rust engine. Agent
+execution and the review features below remain planned.
 
 ## Planned features
 
@@ -132,6 +132,25 @@ milestones.
 
 ## Development
 
+### Native engine bridge (B06)
+
+Opening Flow starts one Rust engine for that project and shows its connection
+status, PID and durable history counts. **Check Engine Health** requests a real
+Rust response; **Restart Engine** closes the old process before reconnecting.
+The project service handles bounded reconnects, snapshot/replay refresh, and
+process cleanup on project close or plugin unload. Closing and reopening the
+tool window reuses the same service.
+
+```sh
+cd integrations/jetbrains
+./gradlew runIde
+```
+
+`runIde` builds and selects `target/debug/flow-engine` automatically. Open a local
+project in the sandbox IDE, then **View → Tool Windows → Flow**. No coding agent
+is started. The [bridge guide](docs/jetbrains-engine-bridge.md) covers lifecycle
+checks, executable resolution, data locations and validation status.
+
 ### Deterministic agent and repository fixtures (B05)
 
 B05 adds an offline ACP SDK fake agent and owned temporary Git repositories.
@@ -148,7 +167,7 @@ python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b05-fixtures.json
 
 The process suite now has 18 experiments, including a crash after a partial
 write. See the [fixture guide](docs/testing-fixtures.md) for scope and commands.
-This is test infrastructure; the native engine bridge remains B06.
+This is test infrastructure used by B06's native engine bridge.
 
 GitHub Actions workflows have been removed. Run the validation commands locally;
 removing the workflow files does not delete historical GitHub run records.
@@ -171,14 +190,14 @@ restart, corruption and crash-boundary checks.
 The Rust executable now serves Flow JSON-RPC v1 over bounded newline-delimited
 stdio. Initialize the connection, use its returned epoch for health/shutdown
 requests, and send `requests.cancel` notifications to cancel pending requests.
-Only these connection methods are implemented; agent sessions and durable replay
-remain later milestones. The [protocol reference](docs/engine-protocol.md) defines
+Project-bound launches also expose state snapshots and durable event replay;
+agent sessions remain later milestones. The [protocol reference](docs/engine-protocol.md) defines
 the wire format, limits, errors, cancellation and mutation retry rules.
 
 Kotlin has explicit protocol DTOs and connection-local reply correlation. Shared
 golden fixtures and schema checks keep both languages aligned. A Kotlin test
 launches the real Rust engine and performs initialization, health, timeout and
-shutdown. The Swing project-service transport remains B06.
+shutdown. B06 adds the Swing project-service transport described above.
 
 B03's local validation passed, including the strict Gradle build, all seven
 Kotlin tests and Plugin Verifier on IDEA IU-253.33813.55. See the protocol
@@ -249,8 +268,8 @@ cd integrations/jetbrains
 
 Use `gradlew.bat` on Windows. The wrapper downloads a checksum-verified Gradle
 distribution. The first build also downloads the pinned IDE and Maven artifacts.
-Open **View → Tool Windows → Flow** in the development IDE. The plugin does not
-launch the Rust process yet; that belongs to the bridge milestone.
+Open **View → Tool Windows → Flow** in the development IDE to launch the project
+engine lazily, then select **Check Engine Health**.
 
 The 253 build range is an initial development target, not a claim of validated
 release compatibility. SDK integration probes and packaged acceptance from the

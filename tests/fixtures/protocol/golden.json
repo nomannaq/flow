@@ -117,7 +117,8 @@
       "sequence": "18446744073709551615"
     },
     "state": {
-      "sessions": []
+      "sessions": 2,
+      "operations": 3
     }
   },
   "replayParams": {

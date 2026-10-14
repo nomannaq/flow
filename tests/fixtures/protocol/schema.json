@@ -255,6 +255,8 @@
       "enum": [
         "engine.initialize",
         "engine.health",
+        "state.snapshot",
+        "events.replay",
         "engine.shutdown",
         "requests.cancel"
       ],
