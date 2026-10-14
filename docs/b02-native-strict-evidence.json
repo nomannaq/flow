@@ -1,0 +1,44 @@
+{
+  "scope": "B02 strict host verification after scoped local IDE artifact fix",
+  "command": "./gradlew check buildPlugin verifyPluginProjectConfiguration verifyPlugin --dependency-verification=strict --console=plain",
+  "userReportedResult": "BUILD SUCCESSFUL in 47s; 19 actionable tasks: 9 executed, 10 up-to-date",
+  "evidenceSource": "User terminal output plus locally inspected report files; assistant did not run Gradle",
+  "nativeTestReport": {
+    "name": "dev.flow.spikes.NativeCompatibilityTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-10-12T16:05:37.167Z",
+    "hostname": "MacBook-Pro.local",
+    "time": "3.791"
+  },
+  "pluginVerifierVerdict": "Compatible. 4 usages of deprecated API. 6 usages of experimental API",
+  "trustedGeneratedArtifacts": [
+    {
+      "group": "localIde",
+      "name": "IU",
+      "version": "IU-253[.]33813[.]55",
+      "file": ".*idea-2025[.]3[.]6[.]1-aarch64-IU-253[.]33813[.]55[.]directory",
+      "regex": "true",
+      "reason": "Generated directory reference to the pinned verified IDEA distribution"
+    },
+    {
+      "group": "localIde",
+      "name": "IU",
+      "version": "IU-253.33813.55",
+      "file": "ivy-IU-253.33813.55.xml",
+      "reason": "Generated local IDE descriptor contains an absolute cache path"
+    }
+  ],
+  "artifactChecksumCount": 763,
+  "sha256": {
+    "integrations/jetbrains/build.gradle.kts": "d36f37bb3a4fd72cf314b64c5b7f1203ca7ae7c5c5b0afe46807204989d78604",
+    "integrations/jetbrains/gradle.lockfile": "067e12ea46c21695b10d06c6d482c044951b021e1a224c3b4ec5fab0d08c73c9",
+    "integrations/jetbrains/gradle/verification-metadata.xml": "4c06d0679a0b40c590e3b7367f3ce854e50020d56982311a8e877372ec5cd2a6",
+    "integrations/jetbrains/build/test-results/test/TEST-dev.flow.spikes.NativeCompatibilityTest.xml": "c6e750371b2d00e014201cedb9663ac7ddeab5476f1dcb0cd328b5b95b169ebc",
+    "integrations/jetbrains/build/reports/pluginVerifier/IU-253.33813.55/plugins/dev.flow.workbench/0.1.0/verification-verdict.txt": "4a344f9c49e7eaa2164e9d4bf1f3f8b046b8698d6eac2c19a3d5abe719975d35",
+    "integrations/jetbrains/build/distributions/flow-jetbrains-0.1.0.zip": "844a91c136ff94095b4dfb49ae3907dfbc5b31658be256ecac0a8cc68db0830b"
+  },
+  "remainingBuildValidation": "Clean checkout and first required CI run"
+}

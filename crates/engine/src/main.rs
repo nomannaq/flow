@@ -1,7 +1,14 @@
 use tracing_subscriber::EnvFilter;
+mod rpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agent-launch")) {
+        let _ = runtime::agents::launch(std::env::args_os().skip(2));
+        eprintln!("Flow adapter launcher failed");
+        std::process::exit(1);
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -10,10 +17,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_ansi(false)
         .try_init()?;
 
-    // Stdout is reserved for Flow IPC; B03 will add the request loop.
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         "Flow engine bootstrap ready"
     );
+    // Explicit host-owned locations only. Bare stdio mode remains side-effect free.
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let store = if args.is_empty() {
+        None
+    } else if (args.len() == 2 || (args.len() == 4 && args[2] == "--data-root"))
+        && args[0] == "--project-root"
+    {
+        let project = std::path::PathBuf::from(&args[1]);
+        let data = args.get(3).map(std::path::PathBuf::from);
+        match tokio::task::spawn_blocking(move || match data {
+            Some(data) => history::HistoryStore::open(&project, &data),
+            None => history::HistoryStore::open_default(&project),
+        })
+        .await?
+        {
+            Ok(store) => {
+                let recovery = store.clone();
+                tokio::task::spawn_blocking(move || recovery.interrupt_agent_sessions()).await??;
+                Some(store)
+            }
+            Err(_) => {
+                tracing::error!("Flow project history could not be opened");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        tracing::error!("Expected --project-root PATH [--data-root PATH]");
+        std::process::exit(1);
+    };
+    // Do not put raw transport/JSON errors in stderr: they may contain input.
+    let result = if let Some(store) = store {
+        rpc::serve_with_store(tokio::io::stdin(), tokio::io::stdout(), Some(store)).await
+    } else {
+        rpc::serve(tokio::io::stdin(), tokio::io::stdout()).await
+    };
+    if result.is_err() {
+        tracing::error!("Flow IPC connection terminated");
+        std::process::exit(1);
+    }
     Ok(())
 }

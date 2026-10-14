@@ -8,9 +8,15 @@ developer in control. Existing agents handle coding; Flow provides workspace
 isolation, project context, and native review tools around them.
 
 **Status: early development.** The repository currently contains the Rust
-workspace, dependency configuration, engine bootstrap, and a placeholder Swing
-tool window. The features below are planned; agent execution and the IDE-to-engine
-bridge are not implemented yet.
+workspace, durable history storage, isolated clean-commit worktree preparation,
+versioned stdio engine protocol, and a native Swing tool window connected to a
+project-scoped Rust engine. B08 adds ACP agent sessions, streaming activity,
+one-time permission controls and cancellation. Verified edit recording and
+native historical review remain upcoming milestones.
+
+The B07 Rust workspace-preparation API and manual exercise are documented in
+[Isolated session worktrees](docs/isolated-session-worktrees.md). See
+[ACP agent sessions](docs/acp-agent-sessions.md) to run an adapter from the native UI.
 
 ## Planned features
 
@@ -42,9 +48,9 @@ Use a native Kotlin/Swing tool window for prompts, streamed activity, permission
 requests, and session navigation. Open diffs in the IDE's editor area and use
 JetBrains' existing navigation, merge, and commit workflows.
 
-Codex is the first planned agent integration through ACP; Claude Code support
-will follow. Flow will preserve each adapter's capabilities and use the agent's
-own authentication and permission mechanisms.
+The experimental ACP session controls target Codex first; Claude Code support
+will follow. Flow retains adapter capabilities and uses the agent's own
+authentication and permission mechanisms.
 
 ### Give agents useful project context
 
@@ -119,7 +125,7 @@ and orchestration engine.
 
 | Path | Responsibility |
 | --- | --- |
-| `crates/protocol` | Serde/JSON Schema contract for the future Flow IPC |
+| `crates/protocol` | Typed Flow IPC contract, storage interfaces and JSON Schema export |
 | `crates/runtime` | ACP SDK integration, session policy and Git worktrees |
 | `crates/history` | SQLite and immutable BLAKE3/zstd history |
 | `crates/engine` | Tokio executable and application wiring |
@@ -132,6 +138,117 @@ milestones.
 
 ## Development
 
+### ACP agent sessions (B08)
+
+Run the development IDE below and open **Flow → Session**. Select an installed
+ACP adapter, enter its arguments as a JSON array, click **Use current commit**,
+and submit a task. Flow creates an isolated worktree and shows activity and
+permission controls. Follow-ups reuse that session; cancellation and closure
+retain partial work. The [B08 guide](docs/acp-agent-sessions.md) covers setup,
+authentication, limits and validation. Verified filesystem operation recording
+arrives in B09; agent tool events alone do not increment recorded-operation counts.
+
+### Native engine bridge (B06)
+
+Opening Flow starts one Rust engine for that project and shows its connection
+status, PID and durable history counts. **Check Engine Health** requests a real
+Rust response; **Restart Engine** closes the old process before reconnecting.
+The project service handles bounded reconnects, snapshot/replay refresh, and
+process cleanup on project close or plugin unload. Closing and reopening the
+tool window reuses the same service.
+
+```sh
+cd integrations/jetbrains
+./gradlew runIde
+```
+
+`runIde` builds and selects `target/debug/flow-engine` automatically. Open a local
+project in the sandbox IDE, then **View → Tool Windows → Flow**. No coding agent
+is started. The [bridge guide](docs/jetbrains-engine-bridge.md) covers lifecycle
+checks, executable resolution, data locations and validation status.
+
+### Deterministic agent and repository fixtures (B05)
+
+B05 adds an offline ACP SDK fake agent and owned temporary Git repositories.
+Tests cover sequential historical edits, permissions, delayed/cancel-resistant
+agents, failed partial writes, malformed output, shell writes, dirty index and
+worktree states, conflicts, renames, binary files, symlinks and unusual paths.
+Independent byte/type/mode oracles verify snapshots after storage restart and
+reject deliberately incorrect expectations. No model credentials are needed.
+
+```sh
+cargo test -p runtime --test fixtures --locked
+python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b05-fixtures.json
+```
+
+The process suite now has 18 experiments, including a crash after a partial
+write. See the [fixture guide](docs/testing-fixtures.md) for scope and commands.
+This is test infrastructure used by B06's native engine bridge.
+
+GitHub Actions workflows have been removed. Run the validation commands locally;
+removing the workflow files does not delete historical GitHub run records.
+
+### Immutable history storage (B04)
+
+The `history` crate now stores immutable manifests and BLAKE3/zstd content,
+with SQLite metadata, durable events and mutation receipts on one bounded writer
+thread. It preserves file modes/types, detects damaged content and backs up older
+schemas before migration. Storage is outside the repository and connected to the
+IDE; verified capture of agent edits remains B09.
+
+See the [storage reference](docs/history-storage.md) for the publication order,
+API boundaries, retry rules, limits and crash-recovery tests.
+Local Rust workspace tests, formatting and Clippy pass, including the new history
+restart, corruption and crash-boundary checks.
+
+### Engine protocol (B03)
+
+The Rust executable now serves Flow JSON-RPC v1 over bounded newline-delimited
+stdio. Initialize the connection, use its returned epoch for health/shutdown
+requests, and send `requests.cancel` notifications to cancel pending requests.
+Project-bound launches also expose state snapshots and durable event replay;
+B08 also exposes session and permission methods. The [protocol reference](docs/engine-protocol.md) defines
+the wire format, limits, errors, cancellation and mutation retry rules.
+
+Kotlin has explicit protocol DTOs and connection-local reply correlation. Shared
+golden fixtures and schema checks keep both languages aligned. A Kotlin test
+launches the real Rust engine and performs initialization, health, timeout and
+shutdown. B06 adds the Swing project-service transport described above.
+
+B03's local validation passed, including the strict Gradle build, all seven
+Kotlin tests and Plugin Verifier on IDEA IU-253.33813.55. See the protocol
+reference for test evidence and remaining platform API notices.
+
+```sh
+cargo run -p protocol --example export_schema --locked -- tests/fixtures/protocol/schema.json
+cargo test --workspace --all-targets --locked
+```
+
+### Build foundation (B02)
+
+B02 adds a registered engine integration test, Kotlin formatting,
+strict Gradle dependency locking and Plugin Verifier against the pinned IDE.
+The host baseline build passed: Kotlin formatting, three native tests, plugin
+packaging and Plugin Verifier against IDEA IU-253.33813.55. Gradle's lockfile and
+checksum metadata are generated, and strict verification without generation
+flags now passes. A clean-checkout validation remains pending; see the
+[build foundation setup](docs/build-foundation.md) for commands and evidence.
+The two outstanding B01 checks remain tracked separately; proceeding with build
+infrastructure does not declare G0 complete.
+
+### Compatibility experiments
+
+B01 adds an ACP SDK probe, 17 fixture experiments, native diff/merge assertions,
+and optional IDE lifecycle actions. Run the local adapter fixture without model credentials:
+
+```sh
+python3 scripts/spikes/check_acp_probe.py --output /tmp/flow-b01-fixtures.json
+```
+
+See the [compatibility runbook](docs/compatibility-spikes.md) for real-adapter
+commands, IDE actions, observed results, and remaining feasibility checks. These
+experiments are separate from the production engine; G0 is still pending.
+
 ### Rust engine
 
 Install Rust through rustup and a native C/C++ toolchain for bundled SQLite,
@@ -141,34 +258,48 @@ BLAKE3 and zstd. `rust-toolchain.toml` selects Rust 1.99.0 with rustfmt and Clip
 cargo build --workspace --locked
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 cargo run -p engine --locked
 ```
 
-The engine currently initializes logging on stderr and exits. `Cargo.lock`
-records resolved dependencies; a fresh machine needs crates.io access to download
-them.
+The engine logs only to stderr and waits for JSON-RPC messages on stdin. It exits
+on EOF or a negotiated shutdown. Run the example in the protocol reference for
+an interactive smoke check. `Cargo.lock` records resolved dependencies; a fresh
+machine needs crates.io access to download them.
 
 ### JetBrains plugin
 
 Install JDK 21 and set `JAVA_HOME` to it. The build uses Gradle 9.0.0, Kotlin 2.2.20,
 IntelliJ Platform Gradle plugin 2.19.0, and IntelliJ IDEA 2025.3.6.1. The IDE provides
 Kotlin stdlib and coroutines; the plugin does not bundle another copy.
+Gradle tests now also require Cargo on PATH: they build the Rust engine for the
+Kotlin-to-Rust protocol integration test. New protocol fixtures are shared test
+resources, not plugin runtime assets.
 
 ```sh
 cd integrations/jetbrains
-./gradlew buildPlugin verifyPluginProjectConfiguration
+./gradlew check buildPlugin verifyPluginProjectConfiguration verifyPlugin
 ./gradlew runIde
 ```
 
 Use `gradlew.bat` on Windows. The wrapper downloads a checksum-verified Gradle
 distribution. The first build also downloads the pinned IDE and Maven artifacts.
-Open **View → Tool Windows → Flow** in the development IDE. The plugin does not
-launch the Rust process yet; that belongs to the bridge milestone.
+Open **View → Tool Windows → Flow** in the development IDE to launch the project
+engine lazily, then select **Check Engine Health**.
 
 The 253 build range is an initial development target, not a claim of validated
 release compatibility. SDK integration probes and packaged acceptance from the
 plan remain required. No agents or credentials are installed by these commands.
 
 Rust workspace compilation, formatting, Clippy, and bootstrap execution have been
-checked. Plugin compilation and IDE launch remain unverified because the bootstrap
-environment blocked Gradle's local lock-coordination socket.
+checked. The development plugin has launched in IDEA 2025.3.6.1; manual historical
+diff, merge Apply/Cancel and project-close cleanup checks passed. All three native
+tests and the plugin ZIP build passed on the user's host; configuration verification
+completed with an intentional 253-only compatibility warning. Real Codex session
+creation, cancellation acknowledgement, sequential edits and shell/background probes
+all passed with a per-run `gpt-6-astra` override. The
+[six-case report](docs/b01-host-real-astra-evidence.json) preserves the results;
+the background case verifies final contents, not every intermediate write.
+Plugin-unload cleanup and adapter release provenance remain pending before G0.
+Gradle's local lock-coordination socket is blocked in the assistant's
+execution environment; run native validation commands in your Mac's Terminal.

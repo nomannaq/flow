@@ -449,10 +449,13 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 name = "engine"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
+ "getrandom",
  "history",
  "protocol",
  "runtime",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
@@ -713,7 +716,11 @@ name = "history"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "getrandom",
+ "protocol",
  "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "zstd",
@@ -1129,9 +1136,15 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
+ "blake3",
+ "futures-util",
+ "getrandom",
  "history",
  "ignore",
  "protocol",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -1543,6 +1556,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

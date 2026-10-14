@@ -1,0 +1,553 @@
+{
+  "platform": "Darwin-arm64",
+  "suite": "real",
+  "experiments": {
+    "initialize": {
+      "report": {
+        "mode": "inspect",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": false,
+        "timeoutSeconds": 120,
+        "elapsedMs": 41,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          }
+        ]
+      },
+      "checkpointContents": {}
+    },
+    "session": {
+      "report": {
+        "mode": "session",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 44,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 30
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          }
+        ]
+      },
+      "checkpointContents": {}
+    },
+    "edit": {
+      "report": {
+        "mode": "edit",
+        "status": "failed",
+        "errorCode": -32603,
+        "failureReason": "rpc_or_probe_error",
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 8838,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 26
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 442
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 1157
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 1979
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 3156
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 5022
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 8837
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      }
+    },
+    "shell": {
+      "report": {
+        "mode": "shell",
+        "status": "failed",
+        "errorCode": -32603,
+        "failureReason": "rpc_or_probe_error",
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 8986,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 36
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 489
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 1106
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 1863
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 3220
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 5458
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 8983
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      }
+    },
+    "background": {
+      "report": {
+        "mode": "background",
+        "status": "failed",
+        "errorCode": -32603,
+        "failureReason": "rpc_or_probe_error",
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 8444,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 33
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 472
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 986
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 1751
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 2829
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 4824
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 8443
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      }
+    },
+    "cancel": {
+      "report": {
+        "mode": "cancel",
+        "status": "passed",
+        "errorCode": null,
+        "failureReason": null,
+        "sdkVersion": "3.3.0",
+        "protocol": "stable-v1",
+        "allowOnce": true,
+        "timeoutSeconds": 120,
+        "elapsedMs": 1051,
+        "parentDirectoryUnchanged": true,
+        "launcher": "unix-exec-with-cwd-and-environment-allowlist",
+        "traceMayBeTruncated": false,
+        "capture": "single fixture file at completed-turn boundaries; not tool-atomic or complete-workspace history",
+        "events": [
+          {
+            "event": "initialize.sent"
+          },
+          {
+            "event": "initialized",
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "codex-acp",
+              "version": "0.5.2"
+            },
+            "capabilities": {
+              "loadSession": false,
+              "image": true,
+              "audio": false,
+              "embeddedContext": true,
+              "mcpHttp": true,
+              "mcpSse": false
+            },
+            "authMethods": [
+              "chatgpt",
+              "codex-api-key",
+              "openai-api-key"
+            ]
+          },
+          {
+            "event": "session.new.sent"
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 32
+          },
+          {
+            "event": "session.update",
+            "kind": "other",
+            "status": null,
+            "toolCallIdHash": null
+          },
+          {
+            "event": "session.created"
+          },
+          {
+            "event": "checkpoint",
+            "snapshot": {
+              "sequence": 0,
+              "blob": "checkpoint-0.txt",
+              "blake3": "d61dbe1dd183c690c454e081a3aec2c5465aca5218a859bb819892cda51aafe5"
+            }
+          },
+          {
+            "event": "adapter.stderr",
+            "category": "other",
+            "panic": false,
+            "nullObject": false,
+            "elapsedMs": 580
+          },
+          {
+            "event": "session.cancel.sent"
+          },
+          {
+            "event": "session.cancel.acknowledged"
+          }
+        ]
+      },
+      "checkpointContents": {
+        "checkpoint-0.txt": "flow-probe-0\n"
+      }
+    }
+  },
+  "recordedAt": "2026-10-12T09:39:40.782798+00:00",
+  "sourceSha256": {
+    "Cargo.lock": "26365a63f147a0738d68bb9c91298149429403048815041ebe9ae9e266cc4344",
+    "crates/runtime/examples/acp_probe.rs": "4048fdb258743c491ea9ea0870194e64c55b6e133e5dc577f0df8b9d04359bf9",
+    "scripts/spikes/fixture_agent.py": "12736a94d087abef028a8c2d2c6fbcd5a7ae482c0c563205671d35d34d5a7475",
+    "scripts/spikes/check_acp_probe.py": "de482e5daec5b5e8da26d6ab2d418819df202e3eed19b352c4fff4cef64a60da"
+  },
+  "adapterSha256": "027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524",
+  "suitePassed": false
+}
