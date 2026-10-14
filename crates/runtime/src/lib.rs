@@ -5,4 +5,6 @@
 //! async/IDE event threads. Agent launch is introduced separately in B08.
 
 #[cfg(unix)]
+pub mod agents;
+#[cfg(unix)]
 pub mod worktrees;

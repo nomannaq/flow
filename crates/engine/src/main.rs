@@ -3,6 +3,12 @@ mod rpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agent-launch")) {
+        let _ = runtime::agents::launch(std::env::args_os().skip(2));
+        eprintln!("Flow adapter launcher failed");
+        std::process::exit(1);
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -30,7 +36,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         })
         .await?
         {
-            Ok(store) => Some(store),
+            Ok(store) => {
+                let recovery = store.clone();
+                tokio::task::spawn_blocking(move || recovery.interrupt_agent_sessions()).await??;
+                Some(store)
+            }
             Err(_) => {
                 tracing::error!("Flow project history could not be opened");
                 std::process::exit(1);

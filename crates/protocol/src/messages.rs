@@ -65,6 +65,20 @@ pub enum JsonRpc {
 /// future methods produce METHOD_NOT_FOUND rather than a JSON parse failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Method {
+    #[serde(rename = "sessions.baseline")]
+    SessionBaseline,
+    #[serde(rename = "sessions.start")]
+    SessionStart,
+    #[serde(rename = "sessions.active")]
+    SessionActive,
+    #[serde(rename = "sessions.prompt")]
+    SessionPrompt,
+    #[serde(rename = "sessions.cancel")]
+    SessionCancel,
+    #[serde(rename = "sessions.close")]
+    SessionClose,
+    #[serde(rename = "permissions.respond")]
+    PermissionRespond,
     #[serde(rename = "engine.initialize")]
     Initialize,
     #[serde(rename = "engine.health")]
@@ -81,6 +95,13 @@ pub enum Method {
 impl Method {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
+            "sessions.baseline" => Some(Self::SessionBaseline),
+            "sessions.start" => Some(Self::SessionStart),
+            "sessions.active" => Some(Self::SessionActive),
+            "sessions.prompt" => Some(Self::SessionPrompt),
+            "sessions.cancel" => Some(Self::SessionCancel),
+            "sessions.close" => Some(Self::SessionClose),
+            "permissions.respond" => Some(Self::PermissionRespond),
             "engine.initialize" => Some(Self::Initialize),
             "engine.health" => Some(Self::Health),
             "state.snapshot" => Some(Self::Snapshot),
