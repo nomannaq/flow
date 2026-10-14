@@ -49,6 +49,7 @@ val buildProtocolTestEngine by tasks.registering(Exec::class) {
 tasks.test {
     dependsOn(buildProtocolTestEngine)
     systemProperty("flow.test.engine", rootProject.file("../../target/debug/flow-engine").absolutePath)
+    systemProperty("flow.test.fakeEngine", rootProject.file("../../tests/fixtures/engine/fake_engine.py").absolutePath)
 }
 
 intellijPlatform {
@@ -94,6 +95,8 @@ tasks.check {
 }
 
 tasks.runIde {
+    dependsOn(buildProtocolTestEngine)
+    jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/flow-engine").absolutePath}")
     if (providers.gradleProperty("flowCompatibilitySpikes").orNull == "true") {
         jvmArgs("-Dflow.compatibility.spikes=true")
     }

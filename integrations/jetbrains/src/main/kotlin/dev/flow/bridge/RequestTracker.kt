@@ -1,6 +1,6 @@
 package dev.flow.bridge
 
-/** Connection-local correlation only. B06 supplies I/O, timers and Swing projection.
+/** Connection-local correlation only. EngineConnection supplies I/O and deadlines.
  * Timeouts/disconnects mean an unknown mutation outcome: query its durable key,
  * never infer failure or retry a mutation from this class's expired IDs.
  * Owned by one background coroutine; no method blocks or touches Swing.
