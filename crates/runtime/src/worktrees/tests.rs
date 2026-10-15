@@ -1,7 +1,5 @@
 use super::*;
-#[allow(dead_code)]
-#[path = "../../../../tests/support/repository.rs"]
-mod repository;
+use crate::test_repository as repository;
 use repository::{ExpectedFile, Oracle, Repository as Fixture, regular, verify};
 use std::{os::unix::fs::symlink, process::Command};
 
@@ -15,6 +13,30 @@ fn manager(repo: &Fixture) -> WorktreeManager {
 }
 fn choice(manager: &WorktreeManager) -> BaselineChoice {
     BaselineChoice::CleanCommit(manager.repository().head.clone())
+}
+
+#[test]
+fn stable_reads_retry_changed_scans_and_fail_on_continuous_writes() {
+    let repo = Fixture::new();
+    let mut scans = 0;
+    let result = stable_capture(|| {
+        scans += 1;
+        if scans <= 2 {
+            repo.write("tracked.txt", format!("{scans}").as_bytes());
+        }
+        capture_once(&repo.root, true)
+    })
+    .unwrap();
+    assert_eq!(scans, 3);
+    assert_eq!(result["tracked.txt"].bytes, b"2");
+    assert!(matches!(
+        stable_capture(|| {
+            scans += 1;
+            repo.write("tracked.txt", format!("{scans}").as_bytes());
+            capture_once(&repo.root, true)
+        }),
+        Err(Error::Unstable)
+    ));
 }
 
 #[test]

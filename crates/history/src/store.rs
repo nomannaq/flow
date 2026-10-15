@@ -21,7 +21,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
+mod lifecycle;
+mod maintenance;
+pub use maintenance::StorageReport;
 const QUEUE_CAPACITY: usize = 4;
 type Job = Box<dyn FnOnce(&mut Database) + Send>;
 struct Worker {
@@ -126,7 +129,20 @@ impl HistoryStore {
     ) -> Result<T> {
         let (reply, response) = mpsc::sync_channel(1);
         let job: Job = Box::new(move |db| {
-            let _ = reply.send(f(db));
+            let result = f(db);
+            if let Err(error) = &result
+                && (matches!(
+                    error,
+                    Error::MissingContent(_)
+                        | Error::CorruptContent(_)
+                        | Error::CorruptMetadata
+                        | Error::Io(_)
+                ) || matches!(error, Error::Sql(rusqlite::Error::SqliteFailure(e, _)) if matches!(e.code, rusqlite::ErrorCode::DiskFull | rusqlite::ErrorCode::SystemIoFailure | rusqlite::ErrorCode::DatabaseCorrupt)))
+            {
+                db.damage = Some(error.to_string());
+                let _ = db.conn.pragma_update(None, "query_only", true);
+            }
+            let _ = reply.send(result);
         });
         self.worker
             .sender
@@ -189,6 +205,13 @@ impl HistoryStore {
         let record = json(&session)?;
         self.call(move |db| {
             db.mutate(key, "session.create", &record, |tx| {
+                if tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM deletions WHERE session_id=?1)",
+                    [session.id.as_str()],
+                    |r| r.get::<_, bool>(0),
+                )? {
+                    return Err(Error::Conflict);
+                }
                 let baseline = load_snapshot(tx, &session.baseline)?;
                 if baseline.manifest.workspace_id != session.workspace_id {
                     return Err(Error::Conflict);
@@ -260,7 +283,8 @@ impl HistoryStore {
         }
         interval(input.started_at_ms, input.completed_at_ms)?;
         let record = json(&input)?;
-        self.call(move |db| db.mutate(key, "operation.record", &record, |tx| {
+        self.call(move |db| {
+        let receipt = db.mutate(key, "operation.record", &record, |tx| {
             let session: Session = load_record(tx, "SELECT record FROM sessions WHERE id=?1", input.session_id.as_str())?;
             let turn: Turn = load_record(tx, "SELECT record FROM turns WHERE id=?1", &input.turn_id)?;
             let before = load_snapshot(tx, &input.before)?;
@@ -279,7 +303,10 @@ impl HistoryStore {
             }
             event(tx, &session.workspace_id, Some(&session.id), "operation.recorded", value!({"id":input.id,"sequence":sequence,"turnId":input.turn_id}))?;
             Ok(value!({"id":input.id,"sequence":sequence}))
-        }))
+        })?;
+        boundary(Boundary::OperationCommitted, #[cfg(test)] db.crash);
+        Ok(receipt)
+        })
     }
     pub fn get_snapshot(&self, id: ContentId) -> Result<Snapshot> {
         self.call(move |db| load_snapshot(&db.conn, &id))
@@ -327,6 +354,151 @@ impl HistoryStore {
                 "SELECT record FROM sessions WHERE id=?1",
                 id.as_str(),
             )
+        })
+    }
+    /// Persist runtime transitions and bounded agent events without claiming
+    /// tool-reported edits are verified filesystem operations.
+    pub fn agent_event(
+        &self,
+        session: SessionId,
+        turn: Option<String>,
+        status: String,
+        kind: String,
+        payload: Value,
+    ) -> Result<()> {
+        identifier(&status)?;
+        identifier(&kind)?;
+        if json(&payload)?.len() > 32 * 1024 {
+            return Err(Error::Invalid("agent event exceeds limit"));
+        }
+        self.call(move |db| {
+            db.require_write(0)?;
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut record: Session = load_record(
+                &tx,
+                "SELECT record FROM sessions WHERE id=?1",
+                session.as_str(),
+            )?;
+            record.status = status.clone();
+            tx.execute(
+                "UPDATE sessions SET record=?2 WHERE id=?1",
+                params![session.as_str(), json(&record)?],
+            )?;
+            if let Some(turn) = turn {
+                let mut record: Turn =
+                    load_record(&tx, "SELECT record FROM turns WHERE id=?1", &turn)?;
+                if record.session_id != session {
+                    return Err(Error::Conflict);
+                }
+                record.status = status;
+                tx.execute(
+                    "UPDATE turns SET record=?2 WHERE id=?1",
+                    params![turn, json(&record)?],
+                )?;
+            }
+            if kind == "session.recovered" {
+                let turns = tx
+                    .prepare("SELECT record FROM turns WHERE session_id=?1")?
+                    .query_map([session.as_str()], |r| r.get::<_, String>(0))?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                for raw in turns {
+                    let mut turn: Turn = decode(&raw)?;
+                    if ["running", "cancelling", "starting"].contains(&turn.status.as_str()) {
+                        turn.status = "interrupted".into();
+                        tx.execute(
+                            "UPDATE turns SET record=?2 WHERE id=?1",
+                            params![turn.id, json(&turn)?],
+                        )?;
+                    }
+                }
+            }
+            event(&tx, &record.workspace_id, Some(&session), &kind, payload)?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+    pub fn bind_agent(
+        &self,
+        id: SessionId,
+        upstream: String,
+        version: String,
+        capabilities: Value,
+    ) -> Result<()> {
+        self.call(move |db| {
+            db.require_write(0)?;
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut record: Session =
+                load_record(&tx, "SELECT record FROM sessions WHERE id=?1", id.as_str())?;
+            record.upstream_id = Some(upstream);
+            record.adapter_version = version;
+            record.capabilities = capabilities;
+            tx.execute(
+                "UPDATE sessions SET record=?2 WHERE id=?1",
+                params![id.as_str(), json(&record)?],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+    /// New engine never silently resumes a previous process or its approvals.
+    pub fn interrupt_agent_sessions(&self) -> Result<()> {
+        self.call(|db| {
+            db.require_write(0)?;
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let records: Vec<String> = tx
+                .prepare("SELECT record FROM sessions")?
+                .query_map([], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            for raw in records {
+                let mut session: Session = decode(&raw)?;
+                if ![
+                    "running",
+                    "ready",
+                    "starting",
+                    "authenticating",
+                    "authenticationRequired",
+                    "cancelling",
+                    "closing",
+                ]
+                .contains(&session.status.as_str())
+                {
+                    continue;
+                }
+                session.status = "interrupted".into();
+                tx.execute(
+                    "UPDATE sessions SET record=?2 WHERE id=?1",
+                    params![session.id.as_str(), json(&session)?],
+                )?;
+                let turns: Vec<String> = tx
+                    .prepare("SELECT record FROM turns WHERE session_id=?1")?
+                    .query_map([session.id.as_str()], |r| r.get(0))?
+                    .collect::<std::result::Result<_, _>>()?;
+                for raw in turns {
+                    let mut turn: Turn = decode(&raw)?;
+                    if ["running", "cancelling", "closing"].contains(&turn.status.as_str()) {
+                        turn.status = "interrupted".into();
+                        tx.execute(
+                            "UPDATE turns SET record=?2 WHERE id=?1",
+                            params![turn.id, json(&turn)?],
+                        )?;
+                    }
+                }
+                event(
+                    &tx,
+                    &session.workspace_id,
+                    Some(&session.id),
+                    "session.interrupted",
+                    value!({}),
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
         })
     }
     pub fn get_turn(&self, id: String) -> Result<Turn> {
@@ -380,10 +552,19 @@ impl HistoryStore {
         after: u64,
         limit: u16,
     ) -> Result<Page<OperationInput>> {
+        self.operations_for_turn(session, None, after, limit)
+    }
+    pub fn operations_for_turn(
+        &self,
+        session: SessionId,
+        turn: Option<String>,
+        after: u64,
+        limit: u16,
+    ) -> Result<Page<OperationInput>> {
         page_limit(after, limit)?;
         self.call(move |db| {
-            let mut stmt = db.conn.prepare("SELECT sequence,record FROM operations WHERE session_id=?1 AND sequence>?2 ORDER BY sequence LIMIT ?3")?;
-            let rows = stmt.query_map(params![session.as_str(), after as i64, limit as u32 + 1], |r| Ok((uint(r, 0)?,r.get::<_, String>(1)?)))?;
+            let mut stmt = db.conn.prepare("SELECT sequence,record FROM operations WHERE session_id=?1 AND sequence>?2 AND (?4 IS NULL OR turn_id=?4) ORDER BY sequence LIMIT ?3")?;
+            let rows = stmt.query_map(params![session.as_str(), after as i64, limit as u32 + 1,turn], |r| Ok((uint(r, 0)?,r.get::<_, String>(1)?)))?;
             let mut entries = Vec::new();
             for row in rows { let (seq, data) = row?; entries.push((seq, decode(&data)?)); }
             let next = if entries.len() > limit as usize { entries.truncate(limit as usize); entries.last().map(|e| e.0) } else { None };
@@ -466,7 +647,7 @@ fn validate_capture(input: &SnapshotInput) -> Result<()> {
 }
 fn changes(before: &Manifest, after: &Manifest) -> Vec<(String, FileChange)> {
     let paths: BTreeSet<_> = before.files.keys().chain(after.files.keys()).collect();
-    paths
+    let mut changes: Vec<_> = paths
         .into_iter()
         .filter_map(|p| {
             let a = before.files.get(p);
@@ -489,7 +670,59 @@ fn changes(before: &Manifest, after: &Manifest) -> Vec<(String, FileChange)> {
                 )
             })
         })
-        .collect()
+        .collect();
+    // Infer only unique delete/create content matches. Duplicate copies remain
+    // separate changes: snapshots cannot establish which file was renamed.
+    let mut removed = BTreeSet::new();
+    let mut renames = Vec::new();
+    for (i, (_, deleted)) in changes.iter().enumerate() {
+        let Some(before) = deleted.before.as_ref().filter(|_| deleted.after.is_none()) else {
+            continue;
+        };
+        let candidates: Vec<_> = changes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, created))| {
+                created.before.is_none()
+                    && created
+                        .after
+                        .as_ref()
+                        .is_some_and(|after| after.blob == before.blob && after.kind == before.kind)
+            })
+            .collect();
+        let deleted_count = changes
+            .iter()
+            .filter(|(_, other)| {
+                other.after.is_none()
+                    && other
+                        .before
+                        .as_ref()
+                        .is_some_and(|entry| entry.blob == before.blob && entry.kind == before.kind)
+            })
+            .count();
+        if candidates.len() == 1 && deleted_count == 1 {
+            let (j, (path, created)) = candidates[0];
+            removed.insert(i);
+            removed.insert(j);
+            renames.push((
+                path.clone(),
+                FileChange {
+                    old_path: deleted.old_path.clone(),
+                    new_path: created.new_path.clone(),
+                    before: deleted.before.clone(),
+                    after: created.after.clone(),
+                },
+            ));
+        }
+    }
+    changes = changes
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, change)| (!removed.contains(&i)).then_some(change))
+        .collect();
+    changes.extend(renames);
+    changes.sort_by(|a, b| a.0.cmp(&b.0));
+    changes
 }
 fn record_page<T: serde::de::DeserializeOwned>(
     conn: &Connection,
@@ -579,12 +812,16 @@ enum Boundary {
     BlobPublished,
     BeforeCommit,
     AfterCommit,
+    OperationCommitted,
 }
 struct Database {
     conn: Connection,
     blobs: Blobs,
     store_id: StoreId,
     _lock: File,
+    directory: PathBuf,
+    damage: Option<String>,
+    pending_at_open: bool,
     #[cfg(test)]
     crash: Option<Boundary>,
 }
@@ -669,6 +906,9 @@ impl Database {
             if version < 2 {
                 tx.execute_batch(include_str!("schema-2.sql"))?;
             }
+            if version < 3 {
+                tx.execute_batch(include_str!("schema-3.sql"))?;
+            }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             tx.commit()?;
         }
@@ -686,15 +926,25 @@ impl Database {
             conn.query_row("SELECT store_id FROM meta WHERE singleton=1", [], |r| {
                 r.get(0)
             })?;
-        let db = Self {
+        let mut db = Self {
             conn,
+            directory: directory.to_owned(),
+            damage: None,
+            pending_at_open: false,
             blobs: Blobs { root: content },
             store_id: StoreId::try_from(id).map_err(|_| Error::CorruptMetadata)?,
             _lock: lock,
             #[cfg(test)]
             crash: None,
         };
-        db.integrity()?;
+        if let Err(error) = db.integrity() {
+            // Keep independently readable metadata/content available. Never repair
+            // or discard damaged history implicitly.
+            db.damage = Some(error.to_string());
+            db.conn.pragma_update(None, "query_only", true)?;
+        }
+        let report = db.storage_report()?;
+        db.pending_at_open = report.pending_mutations > 0 || report.holds > 0;
         Ok(db)
     }
     fn integrity(&self) -> Result<()> {
@@ -772,6 +1022,7 @@ impl Database {
         record: &str,
         apply: impl FnOnce(&Transaction<'_>) -> Result<Value>,
     ) -> Result<MutationReceipt> {
+        self.require_write(0)?;
         let mut hasher = blake3::Hasher::new();
         hasher
             .update(method.as_bytes())
@@ -818,6 +1069,13 @@ impl Database {
         key: MutationKey,
         input: SnapshotInput,
     ) -> Result<MutationReceipt> {
+        self.require_write(
+            input
+                .files
+                .values()
+                .map(|f| f.bytes.len() as u64 + 1024)
+                .sum(),
+        )?;
         let mut files = BTreeMap::new();
         for (name, file) in &input.files {
             let blob = self.blobs.put(&file.bytes)?;
@@ -871,11 +1129,12 @@ impl ProtocolStore for HistoryStore {
     type Error = Error;
     fn snapshot(&self) -> Result<StateSnapshot> {
         self.call(|db| {
+            let report = db.storage_report()?;
             let tx = db.conn.transaction()?;
             let high: u64 = tx.query_row("SELECT COALESCE(MAX(sequence),0) FROM events", [], |r| uint(r, 0))?;
             let (workspaces,sessions,snapshots,operations): (u64,u64,u64,u64) = tx.query_row("SELECT (SELECT COUNT(*) FROM workspaces),(SELECT COUNT(*) FROM sessions),(SELECT COUNT(*) FROM snapshots),(SELECT COUNT(*) FROM operations)", [], |r| Ok((uint(r,0)?,uint(r,1)?,uint(r,2)?,uint(r,3)?)))?;
             let project: String = tx.query_row("SELECT project_root FROM meta WHERE singleton=1", [], |r| r.get(0))?;
-            Ok(StateSnapshot { high_water:EventCursor { store_id:db.store_id.clone(),sequence:EventSequence(high) }, state:value!({"projectRoot":project,"workspaces":workspaces,"sessions":sessions,"snapshots":snapshots,"operations":operations}) })
+            Ok(StateSnapshot { high_water:EventCursor { store_id:db.store_id.clone(),sequence:EventSequence(high) }, state:value!({"projectRoot":project,"workspaces":workspaces,"sessions":sessions,"snapshots":snapshots,"operations":operations,"history":report}) })
         })
     }
     fn replay(&self, query: &ReplayParams) -> Result<ReplayPage> {
@@ -912,6 +1171,7 @@ impl ProtocolStore for HistoryStore {
         let key = key.clone();
         let digest = digest.to_owned();
         self.call(move |db| {
+            db.require_write(0)?;
             let tx = db
                 .conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -937,6 +1197,7 @@ impl ProtocolStore for HistoryStore {
         let new = new.clone();
         json(&new)?;
         self.call(move |db| {
+            db.require_write(0)?;
             let tx = db
                 .conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)?;

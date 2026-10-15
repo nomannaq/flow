@@ -10,13 +10,13 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-pub(super) fn now() -> Result<u64> {
+pub(crate) fn now() -> Result<u64> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| Error::Invalid("system clock precedes epoch"))?
         .as_millis() as u64)
 }
-pub(super) fn token() -> Result<String> {
+pub(crate) fn token() -> Result<String> {
     let mut bytes = [0; 16];
     getrandom::fill(&mut bytes).map_err(|_| Error::Invalid("ownership entropy unavailable"))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
@@ -43,7 +43,7 @@ pub(super) fn regular(path: &Path) -> Result<File> {
     }
     Ok(File::open(path)?)
 }
-pub(super) fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let mut bytes = Vec::new();
     regular(path)?.take(64 * 1024 + 1).read_to_end(&mut bytes)?;
     if bytes.len() > 64 * 1024 {
@@ -52,7 +52,7 @@ pub(super) fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&bytes)
         .map_err(|_| Error::Invalid("ownership metadata is corrupt; inspect it before recovery"))
 }
-pub(super) fn write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     if path.symlink_metadata().is_ok() {
         regular(path)?;
     }
@@ -84,8 +84,13 @@ pub enum Recovery {
 pub(super) struct Lease {
     file: File,
     pub owner: Owner,
+    preserve: std::sync::atomic::AtomicBool,
 }
 impl Lease {
+    pub fn preserve_owner(&self) {
+        self.preserve
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     pub fn acquire(path: &Path, recovery: &Recovery) -> Result<Self> {
         Self::acquire_for(
             path,
@@ -125,14 +130,20 @@ impl Lease {
             .map_err(|_| Error::Invalid("cannot encode lease"))?;
         file.sync_all()?;
         File::open(path.parent().ok_or(Error::Invalid("missing parent"))?)?.sync_all()?;
-        Ok(Self { file, owner })
+        Ok(Self {
+            file,
+            owner,
+            preserve: std::sync::atomic::AtomicBool::new(false),
+        })
     }
 }
 impl Drop for Lease {
     fn drop(&mut self) {
         // Keep the same inode: unlinking a lock lets concurrent callers lock
         // different inodes. If clearing fails, next open requires recovery.
-        let _ = self.file.set_len(0).and_then(|()| self.file.sync_all());
+        if !self.preserve.load(std::sync::atomic::Ordering::SeqCst) {
+            let _ = self.file.set_len(0).and_then(|()| self.file.sync_all());
+        }
     }
 }
 

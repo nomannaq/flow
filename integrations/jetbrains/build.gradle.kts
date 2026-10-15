@@ -1,5 +1,6 @@
 import org.gradle.api.artifacts.dsl.LockMode
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 
 plugins {
     kotlin("jvm") version "2.2.20"
@@ -46,10 +47,32 @@ val buildProtocolTestEngine by tasks.registering(Exec::class) {
     commandLine("cargo", "build", "-p", "engine", "--locked", "--target-dir", rootProject.file("../../target"))
 }
 
+val stageNativeEngine by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build and stage the macOS arm64 release engine, manifest and dependency notices."
+    workingDir = rootProject.file("../..")
+    commandLine("python3", "scripts/package_native_engine.py", "--version", project.version.toString())
+    if (gradle.startParameter.isOffline) args("--offline")
+    providers.environmentVariable("FLOW_NATIVE_SIGNING_IDENTITY").orNull?.let { args("--signing-identity", it) }
+    // Let Cargo decide rebuilds; staging always rechecks the binary and regenerates notices.
+}
+
+tasks.withType<PrepareSandboxTask>().configureEach {
+    dependsOn(stageNativeEngine)
+    from(layout.buildDirectory.dir("native-engine")) {
+        into(pluginName)
+        filesMatching("bin/**/flow-engine") {
+            permissions { unix("rwxr-xr-x") }
+        }
+    }
+}
+
 tasks.test {
     dependsOn(buildProtocolTestEngine)
+    systemProperty("flow.test.nativePayload", layout.buildDirectory.dir("native-engine").get().asFile.absolutePath)
     systemProperty("flow.test.engine", rootProject.file("../../target/debug/flow-engine").absolutePath)
     systemProperty("flow.test.fakeEngine", rootProject.file("../../tests/fixtures/engine/fake_engine.py").absolutePath)
+    systemProperty("flow.test.adapterFixture", rootProject.file("../../scripts/spikes/fixture_agent.py").absolutePath)
 }
 
 intellijPlatform {
@@ -96,8 +119,26 @@ tasks.check {
 
 tasks.runIde {
     dependsOn(buildProtocolTestEngine)
-    jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/flow-engine").absolutePath}")
+    if (providers.gradleProperty("flowBundledEngine").orNull != "true") {
+        jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/flow-engine").absolutePath}")
+    }
     if (providers.gradleProperty("flowCompatibilitySpikes").orNull == "true") {
         jvmArgs("-Dflow.compatibility.spikes=true")
+    }
+}
+
+tasks.buildPlugin {
+    filesMatching("**/bin/**/flow-engine") {
+        permissions { unix("rwxr-xr-x") }
+    }
+}
+
+val checkPackagedPlugin by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Install the built plugin ZIP into scratch storage and smoke its bundled engine."
+    dependsOn(tasks.buildPlugin)
+    workingDir = rootProject.file("../..")
+    doFirst {
+        commandLine("python3", "scripts/check_packaged_plugin.py", "--plugin", tasks.buildPlugin.get().archiveFile.get().asFile.absolutePath)
     }
 }

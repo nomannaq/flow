@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.BorderLayout
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.JTabbedPane
 
 class WorkbenchToolWindowFactory :
     ToolWindowFactory,
@@ -35,6 +36,12 @@ class WorkbenchToolWindowFactory :
         val controller = service.controller
         val status = JBLabel("Connecting to engine…")
         val details = JBList<String>()
+        val sessions = AgentSessionPanel(controller)
+        val tabs = JTabbedPane()
+        val history = SessionHistoryPanel(project, controller, service.scope) { source ->
+            sessions.newConversation(source)
+            tabs.selectedIndex = 0
+        }
         val actions = DefaultActionGroup(
             object : DumbAwareAction("Check Engine Health", "Ask the Rust engine for its status", null) {
                 init {
@@ -56,7 +63,14 @@ class WorkbenchToolWindowFactory :
         val panel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             border = JBUI.Borders.empty(12)
             add(status, BorderLayout.NORTH)
-            add(JBScrollPane(details), BorderLayout.CENTER)
+            add(
+                tabs.apply {
+                    addTab("Session", sessions)
+                    addTab("History", history)
+                    addTab("Engine", JBScrollPane(details))
+                },
+                BorderLayout.CENTER,
+            )
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("Flow.Workbench", actions, true)
         toolbar.targetComponent = panel
@@ -65,16 +79,20 @@ class WorkbenchToolWindowFactory :
         val lifetime = Disposer.newDisposable("Flow tool window content")
         val disposed = AtomicBoolean()
         content.setDisposer(lifetime)
+        Disposer.register(lifetime, history)
         val observer = service.scope.launch {
             controller.view.collect { view ->
                 withContext(Dispatchers.EDT) {
                     if (!disposed.get()) {
                         status.text = view.status
+                        sessions.update(view)
+                        history.update(view)
                         details.setListData(
                             arrayOf(
                                 view.pid?.let { "Engine PID: $it" } ?: "Engine offline",
                                 "${view.sessions} recorded sessions",
                                 "${view.operations} recorded operations",
+                                view.historyStatus,
                                 view.health,
                             ),
                         )

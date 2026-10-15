@@ -33,7 +33,7 @@
       },
       "maxFrameBytes": 1048576,
       "maxInFlight": 32,
-      "maxConnectionRequests": 4096,
+      "maxConnectionRequests": 65536,
       "defaultTimeoutMs": 30000,
       "maxTimeoutMs": 30000
     }
@@ -150,5 +150,52 @@
       "sequence": "18446744073709551615"
     },
     "hasMore": false
+  },
+  "agentStart": {
+    "executable": "/opt/flow/codex-acp",
+    "arguments": [
+      "-c",
+      "model=\"example\""
+    ],
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt": "Implement the fixture",
+    "authMethod": null
+  },
+  "agentView": {
+    "sessionId": "session-fixture",
+    "workspace": "/tmp/flow-fixture",
+    "status": "running",
+    "upstreamSessionId": "upstream-fixture",
+    "agentInfo": {
+      "name": "fixture",
+      "version": "1"
+    },
+    "capabilities": {},
+    "authMethods": [],
+    "activity": [
+      {
+        "kind": "message.delta",
+        "text": "Hello 日本語",
+        "toolCallId": null
+      }
+    ],
+    "permissions": [
+      {
+        "requestId": "permission-fixture",
+        "title": "Write fixture",
+        "toolCallId": "tool-fixture",
+        "options": [
+          {
+            "id": "once",
+            "name": "Allow once"
+          }
+        ]
+      }
+    ]
+  },
+  "permissionDecision": {
+    "sessionId": "session-fixture",
+    "requestId": "permission-fixture",
+    "optionId": "once"
   }
 }

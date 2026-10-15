@@ -10,7 +10,7 @@ import com.google.gson.Strictness
 const val FLOW_PROTOCOL_VERSION = 1
 const val FLOW_MAX_FRAME_BYTES = 1024 * 1024
 const val FLOW_MAX_IN_FLIGHT = 32
-const val FLOW_MAX_CONNECTION_REQUESTS = 4096
+const val FLOW_MAX_CONNECTION_REQUESTS = 65536
 const val FLOW_MAX_TIMEOUT_MS = 30_000L
 
 private val opaqueIdPattern = Regex("[A-Za-z0-9._:-]{1,128}")
@@ -106,7 +106,7 @@ data class DurableEvent(
     val kind: String,
     val payload: JsonElement,
 )
-data class StateSnapshot(val highWater: EventCursor, val sessions: Long, val operations: Long)
+data class StateSnapshot(val highWater: EventCursor, val sessions: Long, val operations: Long, val historyStatus: String = "")
 data class ReplayPage(val events: List<DurableEvent>, val highWater: EventCursor, val hasMore: Boolean)
 data class MutationReceipt(val key: String, val requestDigest: String, val status: String, val outcome: JsonElement?) {
     // An unrecognized future status must never be treated as successful.
@@ -258,7 +258,15 @@ object ProtocolJson {
         val sessions = state.integer("sessions")
         val operations = state.integer("operations")
         require(sessions >= 0 && operations >= 0)
-        return StateSnapshot(cursor(o.required("highWater").objectValue()), sessions, operations)
+        val history = state.getAsJsonObject("history")
+        val historyStatus = if (history == null) {
+            ""
+        } else {
+            val reason = history.get("reason")?.takeUnless { it.isJsonNull }?.asString
+            val usage = "History storage: ${history.integer("bytes")} / ${history.integer("budgetBytes")} bytes"
+            if (reason == null) usage else "$usage — $reason"
+        }
+        return StateSnapshot(cursor(o.required("highWater").objectValue()), sessions, operations, historyStatus)
     }
     fun replayParams(cursor: EventCursor): JsonObject = JsonObject().apply {
         add(

@@ -1,5 +1,196 @@
 {
   "$defs": {
+    "AgentActivity": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "type": "object"
+    },
+    "AgentAuthenticate": {
+      "properties": {
+        "methodId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "methodId"
+      ],
+      "type": "object"
+    },
+    "AgentCommand": {
+      "properties": {
+        "prompt": {
+          "default": "",
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "AgentPermission": {
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/PermissionChoice"
+          },
+          "type": "array"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "title",
+        "toolCallId",
+        "options"
+      ],
+      "type": "object"
+    },
+    "AgentStart": {
+      "properties": {
+        "arguments": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "authMethod": {
+          "description": "Optional explicit SDK authentication method. Existing native login is default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit": {
+          "default": "",
+          "type": "string"
+        },
+        "executable": {
+          "description": "Host-selected absolute executable; never read from repository config.",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "sourceSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit new conversation in a retained workspace; never upstream resume."
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "executable",
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "AgentView": {
+      "properties": {
+        "activity": {
+          "items": {
+            "$ref": "#/$defs/AgentActivity"
+          },
+          "type": "array"
+        },
+        "agentInfo": true,
+        "authMethods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": true,
+        "compatibility": {
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "$ref": "#/$defs/AgentPermission"
+          },
+          "type": "array"
+        },
+        "recordedOperations": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "upstreamSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "agentInfo",
+        "capabilities",
+        "authMethods",
+        "activity",
+        "permissions"
+      ],
+      "type": "object"
+    },
     "CancelParams": {
       "properties": {
         "id": {
@@ -130,6 +321,69 @@
       ],
       "type": "object"
     },
+    "HistoryContentIds": {
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "HistoryQuery": {
+      "properties": {
+        "after": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentIds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryContentIds"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fileIndex": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
     "HostCapabilities": {
       "properties": {
         "commitSelection": {
@@ -253,6 +507,21 @@
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "history.diff",
+        "history.files",
+        "history.turns",
+        "history.location",
+        "history.operations",
+        "sessions.archive",
+        "sessions.list",
+        "sessions.baseline",
+        "sessions.authenticate",
+        "sessions.start",
+        "sessions.active",
+        "sessions.prompt",
+        "sessions.cancel",
+        "sessions.close",
+        "permissions.respond",
         "engine.initialize",
         "engine.health",
         "state.snapshot",
@@ -323,6 +592,45 @@
       "required": [
         "jsonrpc",
         "method"
+      ],
+      "type": "object"
+    },
+    "PermissionChoice": {
+      "properties": {
+        "allowOnce": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PermissionDecision": {
+      "properties": {
+        "optionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "requestId"
       ],
       "type": "object"
     },
@@ -504,6 +812,22 @@
       "pattern": "^[A-Za-z0-9._:-]+$",
       "type": "string"
     },
+    "SessionList": {
+      "description": "Bounded read queries for retained history. Numeric cursors are decimal strings\nso a JavaScript host never loses a SQLite sequence's precision.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "StateSnapshot": {
       "properties": {
         "highWater": {
@@ -533,6 +857,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A schema catalogue, not an additional wire envelope. Review generated changes.",
   "properties": {
+    "agentAuthenticate": {
+      "$ref": "#/$defs/AgentAuthenticate"
+    },
+    "agentCommand": {
+      "$ref": "#/$defs/AgentCommand"
+    },
+    "agentStart": {
+      "$ref": "#/$defs/AgentStart"
+    },
+    "agentView": {
+      "$ref": "#/$defs/AgentView"
+    },
     "cancelParams": {
       "$ref": "#/$defs/CancelParams"
     },
@@ -544,6 +880,9 @@
     },
     "healthResult": {
       "$ref": "#/$defs/HealthResult"
+    },
+    "historyQuery": {
+      "$ref": "#/$defs/HistoryQuery"
     },
     "initializeParams": {
       "$ref": "#/$defs/InitializeParams"
@@ -560,6 +899,9 @@
     "notification": {
       "$ref": "#/$defs/Notification"
     },
+    "permissionDecision": {
+      "$ref": "#/$defs/PermissionDecision"
+    },
     "replayPage": {
       "$ref": "#/$defs/ReplayPage"
     },
@@ -571,6 +913,9 @@
     },
     "response": {
       "$ref": "#/$defs/Response"
+    },
+    "sessionList": {
+      "$ref": "#/$defs/SessionList"
     },
     "snapshot": {
       "$ref": "#/$defs/StateSnapshot"
@@ -590,7 +935,14 @@
     "snapshot",
     "replayParams",
     "replayPage",
-    "mutationReceipt"
+    "mutationReceipt",
+    "sessionList",
+    "historyQuery",
+    "agentStart",
+    "agentCommand",
+    "agentAuthenticate",
+    "permissionDecision",
+    "agentView"
   ],
   "title": "Contract",
   "type": "object"

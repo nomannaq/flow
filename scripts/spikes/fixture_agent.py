@@ -18,7 +18,14 @@ def update(payload):
     send({"method": "session/update", "params": {"sessionId": "fixture", "update": payload}})
 
 
-child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(180)"])
+child_code = "import time; time.sleep(180)"
+if "--heartbeat" in sys.argv:
+    # Liveness evidence belongs outside the captured worktree. Otherwise this
+    # 20 Hz diagnostic writer can intentionally defeat stable-read capture under
+    # load, obscuring the separate background-write test's actual assertions.
+    heartbeat = str(Path.cwd().parent / "fixture-heartbeat")
+    child_code = f"import time,pathlib\nfor i in range(3600):\n pathlib.Path({heartbeat!r}).write_text(str(i)); time.sleep(0.05)"
+child = subprocess.Popen([sys.executable, "-c", child_code])
 Path("fixture-pids.json").write_text(json.dumps([os.getpid(), child.pid]))
 if "FLOW_PROBE_SECRET" in os.environ:
     raise RuntimeError("launcher inherited an unapproved environment variable")
@@ -28,6 +35,7 @@ pending_cancel = None
 sequence = 0
 pending_prompt = ""
 authenticated = False
+auth_attempts = 0
 
 for line in sys.stdin:
     message = json.loads(line)
@@ -48,7 +56,8 @@ for line in sys.stdin:
             "authMethods": [{"id": "fixture", "name": "Fixture authentication"}],
         })
     elif method == "authenticate":
-        if "--reject-auth" in sys.argv:
+        auth_attempts += 1
+        if "--reject-auth" in sys.argv or ("--reject-auth-once" in sys.argv and auth_attempts == 1):
             send({"id": request_id, "error": {"code": -32000, "message": "Authentication required"}})
         else:
             authenticated = True
@@ -74,7 +83,17 @@ for line in sys.stdin:
             }})
             continue
         prompt = message["params"]["prompt"][0]["text"]
-        update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "fixture output"}})
+        for chunk in ["fixture ", "output"]:
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}})
+        if "--unreported-write" in sys.argv:
+            (workspace / "unreported.txt").write_text("no tool notifications\n")
+            respond(request_id, {"stopReason": "end_turn"})
+            continue
+        if "--capture-overflow" in sys.argv:
+            with (workspace / "too-large.bin").open("wb") as output:
+                output.truncate(64 * 1024 * 1024 + 1)
+            respond(request_id, {"stopReason": "end_turn"})
+            continue
         if "waits 30 seconds" in prompt:
             pending_cancel = request_id
             continue
@@ -108,6 +127,17 @@ for line in sys.stdin:
                 subprocess.run(["/bin/sh", "-c", 'printf "%s\\n" "$1" > probe.txt', "fixture", value], cwd=workspace, check=True)
             else:
                 (workspace / "probe.txt").write_text(value + "\n")
+            if "--cancel-after-write" in sys.argv:
+                # Leave the tool pending so cancellation must reconcile actual bytes.
+                pending_cancel = pending_edit
+                pending_edit = None
+                continue
+            if "--fail-second-write" in sys.argv and sequence == 2:
+                # Failure does not undo the bytes already written.
+                update({"sessionUpdate": "tool_call_update", "toolCallId": str(sequence), "status": "failed"})
+                send({"id": pending_edit, "error": {"code": -32603, "message": "Fixture failed after second write"}})
+                pending_edit = None
+                continue
             update({"sessionUpdate": "tool_call_update", "toolCallId": str(sequence), "status": "completed"})
         elif outcome["outcome"] != "cancelled":
             raise RuntimeError("probe must never approve allow_always")

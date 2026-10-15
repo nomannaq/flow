@@ -1,8 +1,16 @@
+mod session_history;
 use tracing_subscriber::EnvFilter;
+mod maintenance;
 mod rpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agent-launch")) {
+        let _ = runtime::agents::launch(std::env::args_os().skip(2));
+        eprintln!("Flow adapter launcher failed");
+        std::process::exit(1);
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -15,6 +23,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         version = env!("CARGO_PKG_VERSION"),
         "Flow engine bootstrap ready"
     );
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--history")) {
+        let args = std::env::args_os().skip(2).collect();
+        if let Err(error) = tokio::task::spawn_blocking(move || maintenance::run(args)).await? {
+            eprintln!("History maintenance failed: {error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     // Explicit host-owned locations only. Bare stdio mode remains side-effect free.
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let store = if args.is_empty() {
@@ -30,7 +46,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         })
         .await?
         {
-            Ok(store) => Some(store),
+            Ok(store) => {
+                let recovery = store.clone();
+                tokio::task::spawn_blocking(move || {
+                    if recovery.storage_report()?.writable {
+                        // A failed recovery write leaves metadata readable and disables
+                        // further writes; the engine must still offer inspection.
+                        let _ = recovery.interrupt_agent_sessions();
+                    }
+                    #[cfg(unix)]
+                    match runtime::maintenance::inspect(&recovery) {
+                        Ok(report) => {
+                            let needs_review = report["sessions"].as_array().is_some_and(|sessions| sessions.iter().any(|s| s["status"] != "closed" || s["worktree"] != "matches_checkpoint"));
+                            tracing::info!(needs_review, "History startup reconciliation finished; no agent mutations replayed");
+                        },
+                        Err(_) => tracing::warn!("History workspace inspection incomplete; retained data requires review"),
+                    }
+                    Ok::<_,history::Error>(())
+                }).await??;
+                Some(store)
+            }
             Err(_) => {
                 tracing::error!("Flow project history could not be opened");
                 std::process::exit(1);

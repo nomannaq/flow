@@ -120,9 +120,14 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
     }
 
     suspend fun close() = withContext(NonCancellable + Dispatchers.IO) {
-        if (process.isAlive && tracker != null && reader.isActive && writer.isActive) {
-            runCatching { request("engine.shutdown", timeoutMs = 250) }
+        val graceful = if (process.isAlive && tracker != null && reader.isActive && writer.isActive) {
+            runCatching { request("engine.shutdown", timeoutMs = 10000) }.isSuccess
+        } else {
+            false
         }
+        // A shutdown acknowledgement precedes the engine's final process exit.
+        // Give it a bounded exit window before falling back to termination.
+        if (graceful) process.waitFor(1, TimeUnit.SECONDS)
         tracker?.disconnect()
         outgoing.close()
         // Stop the process before closing streams: a blocked writer may own a stream lock.
@@ -130,7 +135,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
         // from terminating the child whose handle we already own.
         val descendants = runCatching { process.descendants().use { it.toList() } }.getOrDefault(emptyList())
         descendants.asReversed().forEach { it.destroy() }
-        process.destroy()
+        if (process.isAlive) process.destroy()
         if (!process.waitFor(1, TimeUnit.SECONDS)) process.destroyForcibly()
         descendants.filter { it.isAlive }.forEach { it.destroyForcibly() }
         val exited = process.waitFor(2, TimeUnit.SECONDS)

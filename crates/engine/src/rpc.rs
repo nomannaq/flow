@@ -45,6 +45,38 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     writer: W,
     store: Option<history::HistoryStore>,
 ) -> io::Result<()> {
+    #[cfg(unix)]
+    let mut agents = if let Some(history) = store.clone() {
+        let check = history.clone();
+        let writable =
+            tokio::task::spawn_blocking(move || check.storage_report().is_ok_and(|r| r.writable))
+                .await
+                .unwrap_or(false);
+        writable.then(|| runtime::agents::AgentHost::new(history))
+    } else {
+        None
+    };
+    let result = serve_connection(
+        reader,
+        writer,
+        store,
+        #[cfg(unix)]
+        &mut agents,
+    )
+    .await;
+    #[cfg(unix)]
+    if let Some(host) = &mut agents {
+        host.shutdown().await;
+    }
+    result
+}
+
+async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    reader: R,
+    writer: W,
+    store: Option<history::HistoryStore>,
+    #[cfg(unix)] agents: &mut Option<runtime::agents::AgentHost>,
+) -> io::Result<()> {
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
     let epoch = EngineEpoch::try_from(
@@ -64,6 +96,10 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut shutdown = None;
     loop {
         if closing && jobs.is_empty() {
+            #[cfg(unix)]
+            if let Some(host) = agents.as_mut() {
+                host.shutdown().await;
+            }
             if let Some(id) = shutdown.take() {
                 send(
                     &mut output,
@@ -166,7 +202,10 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         protocol_version: PROTOCOL_VERSION, engine_version: env!("CARGO_PKG_VERSION").into(),
                         epoch: epoch.clone(), project_id: params.project_id.clone(),
                         capabilities: EngineCapabilities { cancellation: true, persistent_events: store.is_some(),
-                            idempotent_mutations: false, agent_sessions: false },
+                            idempotent_mutations: false, agent_sessions: {
+                                #[cfg(unix)] { agents.is_some() }
+                                #[cfg(not(unix))] { false }
+                            } },
                         max_frame_bytes: MAX_FRAME_BYTES, max_in_flight: MAX_IN_FLIGHT,
                         max_connection_requests: MAX_CONNECTION_REQUESTS,
                         default_timeout_ms: DEFAULT_TIMEOUT_MS, max_timeout_ms: MAX_TIMEOUT_MS,
@@ -182,6 +221,79 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     send(&mut output, failure(error::STALE_EPOCH)).await?; continue;
                 }
                 match Method::parse(&request.method) {
+                    #[cfg(unix)]
+                    Some(Method::SessionBaseline) => {
+                        let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
+                        if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
+                        let token = CancellationToken::new(); pending.insert(id.clone(),token.clone());
+                        let epoch = epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            let result = tokio::select! {
+                                _ = token.cancelled() => Err(error::CANCELLED),
+                                result = timeout(Duration::from_millis(timeout_ms),runtime::agents::baseline(store)) => match result {
+                                    Ok(Ok(commit)) => Ok(serde_json::json!({"commit":commit})),
+                                    Ok(Err(_)) => Err(error::INVALID_PARAMS),
+                                    Err(_) => Err(error::TIMEOUT),
+                                }
+                            };
+                            let response = match result {
+                                Ok(value) => Response::success(id.clone(),epoch,value),
+                                Err(code) => Response::failure(Some(id.clone()),Some(epoch),code),
+                            };
+                            (id,response)
+                        }));
+                    }
+                    #[cfg(unix)]
+                    Some(method @ (Method::SessionStart | Method::SessionAuthenticate | Method::SessionActive | Method::SessionPrompt | Method::SessionCancel | Method::SessionClose | Method::PermissionRespond)) => {
+                        let Some(host) = agents.as_mut() else {
+                            send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
+                        };
+                        let result: Result<Value, ()> = match method {
+                            Method::SessionActive => serde_json::to_value(host.view()).map_err(|_| ()),
+                            Method::SessionAuthenticate => serde_json::from_value::<AgentAuthenticate>(request.params).map_err(|_| ())
+                                .and_then(|params| host.authenticate(params).map(|()| Value::Null).map_err(|_| ())),
+                            Method::SessionStart => serde_json::from_value::<AgentStart>(request.params).map_err(|_| ())
+                                .and_then(|params| host.start(params).map(|id| serde_json::json!({"sessionId":id})).map_err(|_| ())),
+                            Method::PermissionRespond => serde_json::from_value::<PermissionDecision>(request.params).map_err(|_| ())
+                                .and_then(|params| host.permission(params).map(|()| Value::Null).map_err(|_| ())),
+                            _ => serde_json::from_value::<AgentCommand>(request.params).map_err(|_| ())
+                                .and_then(|params| {
+                                    let result = if method == Method::SessionClose { host.close(&params.session_id) }
+                                        else { host.command(params, method == Method::SessionCancel) };
+                                    result.map(|()| Value::Null).map_err(|_| ())
+                                }),
+                        };
+                        match result {
+                            Ok(value) => send(&mut output, Response::success(id, epoch.clone(), value)).await?,
+                            Err(()) => send(&mut output, failure(error::INVALID_PARAMS)).await?,
+                        }
+                    }
+                    Some(method @ (Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
+                        let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
+                        if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
+                        let token = CancellationToken::new(); pending.insert(id.clone(), token.clone());
+                        let epoch = epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            // A timed-out archive may have committed. Retrying is idempotent;
+                            // neither cancellation nor reconnect replays a new conversation.
+                            let work = tokio::task::spawn_blocking(move || crate::session_history::request(store, method, request.params));
+                            let result = tokio::select! {
+                                _ = token.cancelled() => Err(error::CANCELLED),
+                                result = timeout(Duration::from_millis(timeout_ms),work) => match result {
+                                    Ok(Ok(Ok(value))) => Ok(value),
+                                    Ok(Ok(Err(history::Error::Busy))) => Err(error::BUSY),
+                                    Ok(Ok(Err(_))) => Err(error::INVALID_PARAMS),
+                                    Ok(Err(_)) => Err(error::INTERNAL),
+                                    Err(_) => Err(error::TIMEOUT),
+                                }
+                            };
+                            let response = match result {
+                                Ok(value) => Response::success(id.clone(),epoch,value),
+                                Err(code) => Response::failure(Some(id.clone()),Some(epoch),code),
+                            };
+                            (id,response)
+                        }));
+                    }
                     Some(method @ (Method::Snapshot | Method::Replay)) => {
                         let Some(store) = store.clone() else {
                             send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
@@ -320,6 +432,45 @@ mod tests {
     }
     fn request(id: i64, method: &str, epoch: &Value, params: Value) -> Value {
         json!({"jsonrpc":"2.0","id":id,"method":method,"epoch":epoch,"params":params})
+    }
+
+    #[tokio::test]
+    async fn blocked_history_stays_readable_and_disables_agent_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let data = temp.path().join("data");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::create_dir(&data).unwrap();
+        let store = history::HistoryStore::open(&project, &data).unwrap();
+        store.set_storage_budget(1).unwrap();
+        let (client, server) = tokio::io::duplex(4096);
+        let (read, write) = tokio::io::split(server);
+        let task = tokio::spawn(serve_with_store(read, write, Some(store)));
+        let (read, write) = tokio::io::split(client);
+        let mut c = Client {
+            input: BufReader::new(read),
+            output: write,
+        };
+        c.send(
+            json!({"jsonrpc":"2.0","id":"init","method":"engine.initialize","params":{
+            "protocolVersion":1,"clientName":"test","clientVersion":"test","projectId":"test"}}),
+        )
+        .await;
+        let reply = c.read().await;
+        assert_eq!(reply["result"]["capabilities"]["agentSessions"], false);
+        assert_eq!(reply["result"]["capabilities"]["persistentEvents"], true);
+        let epoch = reply["epoch"].clone();
+        c.send(request(1, "state.snapshot", &epoch, json!({})))
+            .await;
+        let snapshot = c.read().await;
+        assert_eq!(snapshot["result"]["state"]["sessions"], 0);
+        assert_eq!(snapshot["result"]["state"]["history"]["writable"], false);
+        c.send(request(3, "sessions.list", &epoch, json!({}))).await;
+        assert_eq!(c.read().await["result"]["items"], json!([]));
+        c.send(request(2, "engine.shutdown", &epoch, json!({})))
+            .await;
+        c.read().await;
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]

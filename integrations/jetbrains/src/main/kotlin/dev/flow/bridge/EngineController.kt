@@ -1,6 +1,9 @@
 package dev.flow.bridge
 
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -9,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -18,8 +22,15 @@ internal data class EngineView(
     val connected: Boolean = false,
     val pid: Long? = null,
     val health: String = "",
+    val historyStatus: String = "",
     val sessions: Long = 0,
     val operations: Long = 0,
+    val agentSupported: Boolean = false,
+    val agent: AgentView = AgentView(),
+    val baseline: String = "",
+    val baselineRevision: Long = 0,
+    val baselineLoading: Boolean = false,
+    val actionError: String = "",
 )
 
 /** UI projection only. Durable history/cursors are authoritative in Rust. */
@@ -30,9 +41,13 @@ internal class EngineController(
     private val pollMs: Long = 1000,
     private val retryMs: Long = 250,
 ) {
-    private enum class Command { HEALTH, RESTART }
+    private sealed interface Command {
+        data object HEALTH : Command
+        data object RESTART : Command
+        data class Rpc(val method: String, val params: JsonObject, val reply: CompletableDeferred<JsonElement>? = null) : Command
+    }
     private class Restart : Exception()
-    private val commands = Channel<Command>(Channel.CONFLATED)
+    private val commands = Channel<Command>(32)
     private val mutableView = MutableStateFlow(EngineView())
     val view = mutableView.asStateFlow()
     private var job: Job? = null
@@ -42,6 +57,7 @@ internal class EngineController(
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) {
             var failures = 0
+            var launchFailure: String? = null
             while (isActive) {
                 mutableView.value = EngineView(status = "Connecting to engine…")
                 try {
@@ -49,41 +65,71 @@ internal class EngineController(
                         // No suspension between process creation and ownership by finally.
                         val connection = EngineConnection(launchProcess(), this)
                         try {
-                            connection.initialize(projectId)
+                            val initialized = connection.initialize(projectId)
                             var snapshot = snapshot(connection)
                             var cursor = snapshot.first
-                            mutableView.value = snapshot.second.copy(status = "Connected", connected = true, pid = connection.pid)
+                            mutableView.value = snapshot.second.copy(status = "Connected", connected = true, pid = connection.pid, agentSupported = initialized.capabilities.agentSessions)
                             while (isActive) {
-                                when (withTimeoutOrNull(pollMs) { commands.receive() }) {
+                                when (val command = withTimeoutOrNull(pollMs) { commands.receive() }) {
+                                    is Command.Rpc -> {
+                                        val loadingBaseline = command.method == "sessions.baseline"
+                                        mutableView.update { it.copy(actionError = "", baselineLoading = loadingBaseline) }
+                                        try {
+                                            val result = connection.request(command.method, command.params, timeoutMs = 30000)
+                                            command.reply?.complete(result)
+                                            if (loadingBaseline) {
+                                                mutableView.update { it.copy(baseline = result.asJsonObject["commit"].asString, baselineRevision = it.baselineRevision + 1) }
+                                            }
+                                        } catch (error: EngineRpcException) {
+                                            command.reply?.completeExceptionally(error)
+                                            showActionError(
+                                                if (loadingBaseline) {
+                                                    "Could not read the current commit. Open the Git repository root and run git rev-parse HEAD in its terminal. If it has no commits, create the first commit, then retry. Repository restrictions are documented in the B07 guide."
+                                                } else {
+                                                    "Request rejected. Check the selected commit, adapter settings and current session state."
+                                                },
+                                            )
+                                        } catch (error: Exception) {
+                                            command.reply?.completeExceptionally(error)
+                                            throw error
+                                        } finally {
+                                            mutableView.update { it.copy(baselineLoading = false) }
+                                        }
+                                    }
                                     Command.RESTART -> throw Restart()
                                     Command.HEALTH -> {
                                         mutableView.value = mutableView.value.copy(health = "Checking engine…")
                                         val health = ProtocolJson.health(connection.request("engine.health").asJsonObject)
                                         require(health.projectId == projectId && health.protocolVersion == FLOW_PROTOCOL_VERSION)
-                                        mutableView.value = mutableView.value.copy(health = "Engine ${health.engineVersion} is healthy")
+                                        mutableView.value = mutableView.value.copy(health = "Engine ${health.engineVersion} is responding")
                                     }
                                     null -> Unit
                                 }
+                                if (initialized.capabilities.agentSessions) {
+                                    val agent = AgentProtocol.view(connection.request("sessions.active").asJsonObject)
+                                    mutableView.value = mutableView.value.copy(agent = agent)
+                                }
                                 try {
                                     val page = ProtocolJson.replay(connection.request("events.replay", ProtocolJson.replayParams(cursor)).asJsonObject)
-                                    val next = advance(cursor, page)
-                                    if (next != cursor) {
-                                        // B04 exposes a count summary. Refresh it instead of keeping a second history.
-                                        snapshot = snapshot(connection)
-                                        cursor = snapshot.first
-                                        mutableView.value = snapshot.second.copy(status = "Connected", connected = true, pid = connection.pid, health = mutableView.value.health)
-                                    }
+                                    advance(cursor, page)
+                                    // A rejected history write can change storage health without an event.
+                                    snapshot = snapshot(connection)
+                                    cursor = snapshot.first
+                                    mutableView.value = mutableView.value.copy(sessions = snapshot.second.sessions, operations = snapshot.second.operations, historyStatus = snapshot.second.historyStatus)
                                 } catch (error: EngineRpcException) {
                                     if (error.code != -32602) throw error
                                     snapshot = snapshot(connection)
                                     cursor = snapshot.first
-                                    mutableView.value = snapshot.second.copy(status = "Connected", connected = true, pid = connection.pid)
+                                    mutableView.value = mutableView.value.copy(sessions = snapshot.second.sessions, operations = snapshot.second.operations, historyStatus = snapshot.second.historyStatus)
                                 }
                             }
                         } finally {
                             connection.close()
                         }
                     }
+                } catch (error: EngineLaunchException) {
+                    launchFailure = error.message
+                    failures = 4 // Configuration/integrity failures need an explicit retry.
                 } catch (_: Restart) {
                     failures = 0
                 } catch (_: EngineReconnect) {
@@ -94,10 +140,15 @@ internal class EngineController(
                 } catch (_: Exception) {
                     failures++
                 } finally {
+                    // Never replay a mutating command into a replacement engine/session.
+                    while (true) {
+                        val stale = commands.tryReceive().getOrNull() ?: break
+                        if (stale is Command.Rpc) stale.reply?.completeExceptionally(IllegalStateException("Engine disconnected; outcome unknown"))
+                    }
                     mutableView.value = EngineView(status = "Disconnected; request outcome unknown")
                 }
                 if (failures > 3) {
-                    mutableView.value = EngineView(status = "Disconnected. Check the engine executable and project access, then retry.")
+                    mutableView.value = EngineView(status = "Disconnected. ${launchFailure ?: "Check the engine executable and project access, then retry."}")
                     break
                 }
                 if (failures > 0) {
@@ -117,9 +168,26 @@ internal class EngineController(
         commands.trySend(Command.RESTART)
     }
 
+    fun agentRequest(method: String, params: JsonObject = JsonObject()) {
+        if (!mutableView.value.connected || !commands.trySend(Command.Rpc(method, params)).isSuccess) {
+            showActionError("Engine unavailable or command queue full; retry explicitly.")
+        }
+    }
+
+    suspend fun historyRequest(method: String, params: JsonObject = JsonObject()): JsonElement {
+        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff"))
+        val reply = CompletableDeferred<JsonElement>()
+        check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
+        return reply.await()
+    }
+
+    fun showActionError(message: String) {
+        mutableView.update { it.copy(actionError = message) }
+    }
+
     private suspend fun snapshot(connection: EngineConnection): Pair<EventCursor, EngineView> {
         val value = ProtocolJson.snapshot(connection.request("state.snapshot").asJsonObject)
-        return value.highWater to EngineView(sessions = value.sessions, operations = value.operations)
+        return value.highWater to EngineView(sessions = value.sessions, operations = value.operations, historyStatus = value.historyStatus)
     }
 
     companion object {
