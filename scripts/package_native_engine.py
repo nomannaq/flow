@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Stage the one supported native payload for IntelliJ's prepareSandbox task.
+"""Stage the host's native payload for IntelliJ's prepareSandbox task.
 
-Python 3.11+, Cargo and Apple's command-line tools are build prerequisites only.
+Python 3.11+, Cargo and a native C toolchain are build prerequisites only.
 This creates an internal smoke distribution, not a signed/notarized release.
 """
 import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
-import platform
 import shutil
 import struct
 import subprocess
 import tempfile
 import tomllib
+from native_platform import host_target, engine_name
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = "aarch64-apple-darwin"
 OUTPUT = ROOT / "integrations/jetbrains/build/native-engine"
 
 
@@ -31,7 +31,45 @@ def run(*command, capture=False, env=None):
                           stdout=subprocess.PIPE if capture else None, env=env).stdout
 
 
-def dependency_inventory(metadata, output):
+def inspect_binary(binary, target):
+    with binary.open("rb") as source:
+        header = source.read(64)
+        if target.endswith("apple-darwin"):
+            cpu = 0x0100000C if target.startswith("aarch64") else 0x01000007
+            if struct.unpack("<II", header[:8]) != (0xFEEDFACF, cpu):
+                raise ValueError("Engine Mach-O architecture differs from target")
+            linked = run("/usr/bin/otool", "-L", str(binary), capture=True).splitlines()[1:]
+            libraries = [line.strip().split(" (", 1)[0] for line in linked]
+            if not libraries or any(not p.startswith(("/usr/lib/", "/System/Library/")) for p in libraries):
+                raise ValueError("Engine depends on a non-system dynamic library")
+            return libraries, {"minimumMacOS": "13.0"}
+        if target.endswith("windows-msvc"):
+            if header[:2] != b"MZ":
+                raise ValueError("Engine is not a PE executable")
+            source.seek(struct.unpack_from("<I", header, 60)[0])
+            if source.read(6) != b"PE\0\0\x64\x86":
+                raise ValueError("Engine is not an x86-64 PE executable")
+            linked = run("dumpbin", "/nologo", "/dependents", str(binary), capture=True)
+            libraries = re.findall(r"^\s+([\w.-]+\.dll)\s*$", linked, re.MULTILINE | re.IGNORECASE)
+            allowed = {"kernel32.dll", "ntdll.dll", "userenv.dll", "ws2_32.dll", "bcrypt.dll", "bcryptprimitives.dll", "advapi32.dll", "shell32.dll", "ole32.dll", "oleaut32.dll", "secur32.dll", "crypt32.dll", "rpcrt4.dll", "psapi.dll", "synchronization.dll"}
+            if not libraries or any(p.lower() not in allowed and not p.lower().startswith("api-ms-win-") for p in libraries):
+                raise ValueError("Engine depends on a non-system DLL (build with the static MSVC runtime)")
+            return libraries, {"minimumWindows": "10", "msvcRuntime": "static"}
+        if header[:6] != b"\x7fELF\x02\x01" or struct.unpack_from("<H", header, 18)[0] != 62:
+            raise ValueError("Engine is not a little-endian x86-64 ELF executable")
+        linked = run("readelf", "-d", str(binary), capture=True)
+        libraries = re.findall(r"\(NEEDED\).*\[([^]]+)\]", linked)
+        allowed = {"libc.so.6", "libm.so.6", "libgcc_s.so.1", "libpthread.so.0", "libdl.so.2", "librt.so.1", "ld-linux-x86-64.so.2"}
+        if not libraries or any(p not in allowed for p in libraries) or re.search(r"\((?:RPATH|RUNPATH)\)", linked):
+            raise ValueError("Engine depends on a non-system shared library or library search path")
+        versions = run("readelf", "--version-info", str(binary), capture=True)
+        glibc = [tuple(map(int, v.split('.'))) for v in re.findall(r"\bGLIBC_(\d+\.\d+(?:\.\d+)?)\b", versions)]
+        if not glibc or max(glibc) > (2, 35):
+            raise ValueError("Build Linux packages on the Ubuntu 22.04/glibc 2.35 baseline or older")
+        return libraries, {"minimumGlibc": "2.35"}
+
+
+def dependency_inventory(metadata, output, target):
     """Inventory the engine's target-filtered normal/build closure, not test tools."""
     packages = {p["id"]: p for p in metadata["packages"]}
     nodes = {n["id"]: n for n in metadata["resolve"]["nodes"]}
@@ -63,54 +101,56 @@ def dependency_inventory(metadata, output):
         inventory.append({"name": package["name"], "version": package["version"],
                           "license": package["license"], "source": package["source"] or "Flow workspace",
                           "noticeFiles": notices})
-    return {"schemaVersion": 1, "target": TARGET, "scope": "Engine normal/build dependencies; declared licenses and available notice files. Manual redistribution review still required.",
+    return {"schemaVersion": 1, "target": target, "scope": "Engine normal/build dependencies; declared licenses and available notice files. Manual redistribution review still required.",
             "flowLicense": "Not declared; internal smoke distribution only", "packages": inventory,
-            "hostProvided": ["IntelliJ Platform 253.33813.55", "Kotlin and kotlinx.coroutines supplied by IntelliJ", "macOS system libraries/frameworks", "System Git (not bundled)"],
+            "hostProvided": ["IntelliJ Platform 253.33813.55", "Kotlin and kotlinx.coroutines supplied by IntelliJ", "Operating system libraries (see distribution.json)", "System Git (not bundled)"],
             "buildTools": {"Rust": run("rustc", "--version", capture=True).strip(), "Gradle": "9.0.0", "IntelliJPlatformGradlePlugin": "2.19.0", "KotlinCompiler": "2.2.20"}}
 
 
 def stage(version, offline=False, signing_identity=None):
-    if platform.system() != "Darwin" or platform.machine().lower() not in ("arm64", "aarch64"):
-        raise ValueError("B28 builds only on macOS Apple Silicon; other targets need platform acceptance")
+    target = host_target()
+    macos = target.endswith("apple-darwin")
+    windows = target.endswith("windows-msvc")
+    if signing_identity and not macos:
+        raise ValueError("--signing-identity is only supported for macOS packages")
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text())
     if version != cargo["workspace"]["package"]["version"]:
         raise ValueError("Plugin and engine versions must match")
     flags = ["--locked"] + (["--offline"] if offline else [])
     environment = os.environ.copy()
-    environment["MACOSX_DEPLOYMENT_TARGET"] = "13.0"
-    run("cargo", "build", "-p", "engine", "--bin", "flow-engine", "--release", "--target", TARGET,
+    if macos:
+        environment["MACOSX_DEPLOYMENT_TARGET"] = "13.0"
+    if windows:
+        # Target-specific flags leave host proc macros dynamically linked.
+        environment["CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS"] = "-C target-feature=+crt-static"
+    run("cargo", "build", "-p", "engine", "--bin", "flow-engine", "--release", "--target", target,
         "--target-dir", str(ROOT / "target"), *flags, env=environment)
-    metadata = json.loads(run("cargo", "metadata", "--format-version", "1", "--filter-platform", TARGET, *flags, capture=True))
+    metadata = json.loads(run("cargo", "metadata", "--format-version", "1", "--filter-platform", target, *flags, capture=True))
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="native-engine-", dir=OUTPUT.parent) as temporary:
         payload = Path(temporary)
-        binary = payload / "bin" / TARGET / "flow-engine"
+        binary = payload / "bin" / target / engine_name(target)
         binary.parent.mkdir(parents=True)
-        shutil.copyfile(ROOT / "target" / TARGET / "release/flow-engine", binary)
+        shutil.copyfile(ROOT / "target" / target / "release" / engine_name(target), binary)
         binary.chmod(0o755)
-        with binary.open("rb") as source:
-            if struct.unpack("<II", source.read(8)) != (0xFEEDFACF, 0x0100000C):
-                raise ValueError("Engine is not an arm64 Mach-O executable")
-        linked = run("/usr/bin/otool", "-L", str(binary), capture=True).splitlines()[1:]
-        libraries = [line.strip().split(" (", 1)[0] for line in linked]
-        if not libraries or any(not p.startswith(("/usr/lib/", "/System/Library/")) for p in libraries):
-            raise ValueError("Engine depends on a non-system dynamic library")
+        libraries, requirements = inspect_binary(binary, target)
         # Hash only after signing: changing a Mach-O signature changes its bytes.
         if signing_identity:
             run("/usr/bin/codesign", "--force", "--options", "runtime", "--timestamp", "--sign", signing_identity, str(binary))
-        else:
+        elif macos:
             run("/usr/bin/codesign", "--force", "--sign", "-", str(binary))
-        run("/usr/bin/codesign", "--verify", "--strict", str(binary))
-        inventory = dependency_inventory(metadata, payload)
+        if macos:
+            run("/usr/bin/codesign", "--verify", "--strict", str(binary))
+        inventory = dependency_inventory(metadata, payload, target)
         (payload / "dependency-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
         protocol = (ROOT / "crates/protocol/src/lib.rs").read_text()
         if "pub const PROTOCOL_VERSION: u32 = 1;" not in protocol:
             raise ValueError("Review the packaged protocol manifest after a protocol change")
         manifest = {"schemaVersion": 1, "engineVersion": version, "pluginVersion": version, "protocolVersion": 1,
-                    "target": TARGET, "ideBuild": "253.33813.55", "minimumMacOS": "13.0",
-                    "enginePath": f"bin/{TARGET}/flow-engine", "sha256": digest(binary),
+                    "target": target, "ideBuild": "253.33813.55", **requirements,
+                    "enginePath": f"bin/{target}/{engine_name(target)}", "sha256": digest(binary),
                     "cargoLockSha256": digest(ROOT / "Cargo.lock"), "inventorySha256": digest(payload / "dependency-inventory.json"),
-                    "dynamicLibraries": libraries, "signing": "developer-id-notarization-pending" if signing_identity else "ad-hoc-internal-smoke"}
+                    "dynamicLibraries": libraries, "signing": "developer-id-notarization-pending" if signing_identity else "ad-hoc-internal-smoke" if macos else "unsigned-internal-smoke"}
         (payload / "distribution.json").write_text(json.dumps(manifest, indent=2) + "\n")
         # Only replace this script's fixed generated directory, never caller-supplied paths.
         if OUTPUT.is_symlink():
@@ -118,7 +158,7 @@ def stage(version, offline=False, signing_identity=None):
         if OUTPUT.exists():
             shutil.rmtree(OUTPUT)
         shutil.copytree(payload, OUTPUT)
-    print(f"Staged {TARGET} engine {version}: {OUTPUT}")
+    print(f"Staged {target} engine {version}: {OUTPUT}")
 
 
 if __name__ == "__main__":

@@ -1,17 +1,31 @@
 # Native engine packaging (B28)
 
-This milestone bundles Flow's release Rust engine for **macOS Apple Silicon**
-(`aarch64-apple-darwin`, deployment target macOS 13) with the plugin compiled for
-IntelliJ IDEA 2025.3.6.1 / IU-253.33813.55. Other OS/architecture builds are refused.
+The build bundles the host's release Rust engine with the plugin compiled for
+IntelliJ IDEA 2025.3.6.1 / IU-253.33813.55. Platform expansion adds four separate
+packages; every filename includes its target to prevent accidental substitution:
+
+| Platform | Package target | Native CI runner | Engine requirements |
+| --- | --- | --- | --- |
+| Windows Intel/AMD 64-bit | `x86_64-pc-windows-msvc` | `windows-2022` | Windows 10+, static MSVC runtime |
+| Linux Intel/AMD 64-bit | `x86_64-unknown-linux-gnu` | `ubuntu-22.04` | glibc 2.35+, system libgcc |
+| macOS Intel | `x86_64-apple-darwin` | `macos-15-intel` | macOS 13+ |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `macos-15` | macOS 13+ |
+
+Windows x86 here means **x86-64**, not 32-bit Windows. Linux/Windows ARM and
+musl-based Linux are outside this matrix. Install the ZIP matching the IDE
+process's architecture (including when the IDE runs under Rosetta).
 This is an internal installation smoke artifact. B12's real-Codex evidence and
 B29's final release acceptance remain separate gates.
 
 ## Build and validate
 
 Build prerequisites: Rust 1.99.0, Cargo's locked dependencies, system Git,
-Python 3.11+, Apple's command-line tools (`otool`, `codesign`), JDK 21, and the
-verified Gradle/IntelliJ dependency cache. Installation requires only the supported
-IDE/macOS, writable local project/data directories and system Git for coding
+Python 3.11+, JDK 21, and the verified Gradle/IntelliJ dependency cache. Native
+tools are Apple's command-line tools (`otool`, `codesign`) on macOS; Visual Studio
+C++ Build Tools and `dumpbin` in an x64 developer shell on Windows; and a C
+compiler, binutils (`readelf`) and development headers on Linux. Build Linux on
+the Ubuntu 22.04/glibc 2.35 baseline or older. Installation requires the supported
+IDE/OS, writable local project/data directories and system Git for coding
 sessions. Users independently install/configure their ACP adapter and its login.
 
 ```sh
@@ -23,11 +37,19 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 ```
 
 Append `--offline` when all dependencies are cached. The package appears under
-`integrations/jetbrains/build/distributions/`. `stageNativeEngine` invokes
-`scripts/package_native_engine.py` for a locked release build, verifies arm64
-Mach-O format and refuses non-system dynamic library references. SQLite/zstd
-remain built into the executable. The script ad-hoc signs the staged binary for
-local execution, verifies that signature and hashes the final signed bytes.
+`integrations/jetbrains/build/distributions/flow-jetbrains-0.1.0-<target>.zip`.
+On Linux omit the macOS `JAVA_HOME` command; use `xvfb-run -a ./gradlew ...` for
+headless IDE tests. On Windows use `gradlew.bat` from the x64 developer shell,
+with JDK 21 selected and Python 3.11+ on PATH. `FLOW_PYTHON` can select the build
+Python executable explicitly. No shell wrappers or Python are required at install.
+
+`stageNativeEngine` invokes `scripts/package_native_engine.py` for a locked
+native release build. It verifies the Mach-O, x86-64 PE or x86-64 ELF header,
+refuses non-system dynamic dependencies, and rejects Linux binaries requiring
+glibc newer than 2.35 or containing library search paths. Windows builds use a
+static MSVC runtime and reject external runtime DLL dependencies. SQLite/zstd
+remain built into the executable. On macOS the script ad-hoc signs the staged
+binary for local execution, verifies that signature and hashes the signed bytes.
 It stages only its fixed generated `build/native-engine` directory.
 
 The package contains:
@@ -38,11 +60,11 @@ Flow/
   distribution.json           # versions, protocol, target, digest, linked libraries
   dependency-inventory.json   # engine normal/build closure and declared licenses
   licenses/                   # available LICENSE/COPYING/NOTICE files from crates
-  bin/aarch64-apple-darwin/flow-engine
+  bin/<target>/flow-engine     # flow-engine.exe on Windows
 ```
 
 The manifest records plugin/engine/protocol versions, the pinned IDE build,
-minimum macOS version, engine digest, Cargo.lock and inventory digests, linked
+minimum OS/runtime requirements, engine digest, Cargo.lock and inventory digests, linked
 system libraries and signing state. The inventory follows Cargo's target-filtered
 normal/build dependency closure and excludes development-only branches. It records
 workspace packages, missing declared licenses and host-provided components
@@ -58,12 +80,14 @@ no archive extractor or separate download/update service.
 
 ## Installed executable selection
 
-The project service resolves only the manifest's fixed macOS arm64 path. It
-validates platform, minimum OS, plugin/engine/protocol identity, bounded manifest
+The project service maps the IDE's OS and CPU to a fixed target path and requires
+the manifest to match. A wrong-platform ZIP names the required target in its
+startup error. It validates macOS/Windows minimum version, plugin/engine/protocol identity, bounded manifest
 and binary sizes, regular files, absence of symlink redirection and SHA-256.
 All checks and process work run on the controller's IO dispatcher. If the ZIP
-installer drops execute bits, Flow restores only owner execute after digest
-verification, preserving read/write permissions. Paths with spaces pass directly
+installer drops Unix execute bits, Flow restores only owner execute after digest
+verification, preserving read/write permissions; Windows uses executable ACLs.
+Paths with spaces pass directly
 to ProcessBuilder; no shell expansion or quoting is involved.
 
 The adjacent manifest is trusted only as part of a trusted installed distribution.
@@ -91,7 +115,8 @@ acceptance, install the ZIP in a separate IDE as below.
 
 `checkPackagedPlugin` validates the ZIP and extracts it into an owned temporary
 installation outside the checkout, including paths with spaces. It rejects
-traversal, duplicate entries, symlinks, unsupported file types and excessive
+traversal, case-insensitive duplicates, Windows device/ambiguous paths, symlinks,
+unsupported file types and excessive
 extraction size. It verifies binary/inventory hashes and presence of a plugin
 JAR descriptor. It starts the copied release engine twice through versioned IPC,
 checks health, empty persistent state, no agent session and clean shutdown, then
@@ -105,12 +130,39 @@ platform and fixed-diagnostic regressions. Python archive/inventory regressions:
 # From repository root:
 python3 scripts/test_packaged_plugin.py
 python3 scripts/check_packaged_plugin.py \
-  --plugin integrations/jetbrains/build/distributions/flow-jetbrains-0.1.0.zip
+  --plugin integrations/jetbrains/build/distributions/flow-jetbrains-0.1.0-<target>.zip
 ```
+
+The [native CI workflow](../.github/workflows/native-packages.yml) builds and
+checks on each actual OS/architecture. It retains a ZIP only after Rust checks,
+Python regressions, the Kotlin/native suite, packaged startup, strict dependency
+verification, Plugin Verifier and `checkPackagedAgentSession` pass. The last task
+uses the installed release engine for two offline ACP edits, verifies immutable
+historical transitions and unchanged developer files/index, closes the session,
+checks a descendant heartbeat has stopped, then inspects persisted checkpoints.
+It never invokes a paid model or substitutes for the B12 real-Codex check.
+
+Windows enables the previously Unix-only agent/worktree path. The SDK launches
+an engine supervisor which assigns the adapter to a kill-on-close Job Object
+before resuming it. Closing/killing that supervisor closes its job handle and
+stops descendants. A bounded, read-only `tasklist` probe verifies supervisor exit;
+an uncertain result retains stale writer ownership for explicit recovery. Only
+native `.exe` adapters are accepted on Windows; configure an executable such as
+`node.exe` plus adapter arguments rather than a `.cmd` launcher. OS/login/temp
+environment variables are allowlisted on Windows; Linux retains `XDG_DATA_HOME`.
+Git is resolved from PATH and runs with hooks, filters and global config disabled.
+
+Windows history uses native file locks, atomic replacement, file-content flushes
+and SQLite FULL commits. Unix mode bits are represented as read-only/writable
+regular-file modes on Windows. There is no unprivileged Windows directory-fsync
+equivalent: directory durability uses NTFS journaling, and power-loss durability
+still requires Windows host evidence. Local NTFS workspaces/data are the intended
+Windows acceptance environment; network shares are not certified. Linux creates
+the native data directory on first use if `~/.local/share` does not exist.
 
 Required clean-machine/native installation acceptance (record observed results):
 
-1. Transfer the built ZIP and its recorded SHA-256 to a supported Mac with the
+1. Transfer the matching ZIP and its recorded SHA-256 to each supported host with the
    pinned IDE, without this repository or Rust/build artifacts. Install via
    **Settings → Plugins → Install Plugin from Disk**, then restart the IDE.
 2. Ensure `flow.engine.path` is absent. Open a local project with spaces in its
@@ -120,14 +172,15 @@ Required clean-machine/native installation acceptance (record observed results):
    the IDE, and unload the plugin. Record old/new PIDs and observed shutdown.
 4. Check missing system Git and missing ACP adapter messages when trying a coding
    session. Engine health itself requires neither Git credentials nor a model.
-5. Observe install warnings/macOS security behavior. Record OS, architecture, IDE
+5. Observe install warnings/OS security behavior (Gatekeeper, SmartScreen or Linux
+   execution policy). Record OS, architecture, IDE
    build, archive/binary hashes, signing identity/state and results. Clean-machine
-   install, plugin unload, Gatekeeper/quarantine behavior and UI presentation are
+   install, plugin unload, OS approval/quarantine behavior and UI presentation are
    host evidence, not claims made by the headless smoke test.
 
 ## Signing and public distribution
 
-Ad-hoc signing permits a local smoke build; it provides no publisher identity.
+macOS ad-hoc signing permits a local smoke build; it provides no publisher identity.
 For a distribution candidate, explicitly sign the native executable with a chosen
 Developer ID and hardened runtime **before** manifest/digest generation. Set `FLOW_NATIVE_SIGNING_IDENTITY` when invoking Gradle so staging receives
 its explicit `--signing-identity` argument on every build; notarization is
@@ -143,8 +196,50 @@ credentials provided through external release configuration. No signing keys,
 publishing credentials, automatic certificate selection or publishing are added.
 B29 rebuilds the final feature set and records those release checks; this early
 smoke does not certify later candidate/apply behavior or upgrades.
+Windows Authenticode and publisher reputation/SmartScreen acceptance remain
+pending; Windows/Linux smoke packages are explicitly labelled unsigned. JetBrains
+ZIP signing applies separately to every platform package. Any later native
+signature must be applied before hashing and packaging.
 
-## Recorded local validation — 2026-10-15
+## Platform expansion validation — 2026-10-15
+
+| Target | Observed checks in this session | Still required |
+| --- | --- | --- |
+| macOS arm64 | 74 Rust tests; 26 Kotlin/native tests; 7 Python regressions; formatting/Clippy; strict Gradle build and ZIP startup/restart/shutdown smoke; Plugin Verifier compatibility with the pinned IDE (existing API warnings) | Clean-machine installation, release signing, and strict packaged ACP shutdown on an unrestricted host |
+| Linux x86-64 | Full Rust suite in an isolated Debian 12 x86-64 container, plus first-start XDG test (75 total); 7 Python regressions; release ELF/dependency/glibc inspection; offline two-edit/history/checkpoint/descendant-shutdown acceptance | Native Ubuntu CI plugin build and IDE installation; container evidence is not desktop IDE evidence |
+| Windows x86-64 | All Rust targets compile and pass Clippy with warnings denied using `x86_64-pc-windows-gnu`; platform/path/PE validation fixtures pass | Native MSVC release packaging, Windows lock regression execution, Job Object lifecycle, Kotlin/native suite, and clean-machine installation |
+| macOS Intel | Target selection, package layout and Mach-O validation fixtures | Native Intel runner build, full suite and clean-machine installation |
+
+The hosted workflow is added but has not run in this session. Cross-compilation
+checks Windows APIs and test compilation; it does not verify the MSVC payload or
+Windows execution. The native matrix must pass before claiming those platforms
+are accepted. Gradle tracks the engine payload and external fixtures as test
+inputs so rebuilt binaries cannot reuse a stale test result. The historical B01
+`acp_probe` example remains explicitly Unix-only;
+Windows uses the production engine and `checkPackagedAgentSession` instead.
+
+Linux parallel tests exposed transient `Busy` results from lock descriptors
+briefly inherited between another thread's fork and exec. Worktree and history
+writer locks now share a retry bounded to 100 ms; persistent competing writers
+remain rejected.
+The final Linux suite and existing ownership/recovery tests pass with this bound.
+Windows recovery reads ownership through its locked handle, because Windows file
+locks prohibit reading the same bytes through a separate handle.
+
+The macOS packaged ACP fixture stops its processes, but the release executable's
+process-group probe returns `EPERM` in this environment. Strict session acceptance
+therefore fails and retains stale ownership, as designed; it is not counted as a
+pass. The health-only packaged smoke and Kotlin/native suite pass. No cleanup
+check was weakened to accept an unverified writer shutdown.
+
+The current Mac archive is
+`build/distributions/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip` with SHA-256
+`a96d70dd0fca0bdb431307e621c0fefab9339a86ffc3a79e9a9fd34d86db62db`.
+Its engine SHA-256 is
+`02bdb64bbdf1b282c88b8ff65246e5fa143fb2760a6fbe1b8566dd88f8e16efb`.
+These identify this local build only. B12's real-Codex acceptance stays open.
+
+## Historical Apple Silicon B28 validation — 2026-10-15
 
 On macOS 27.0.1 / arm64, the complete strict, offline Gradle command above
 finished successfully. **25 Kotlin/native tests**, **76 Rust tests** and **4

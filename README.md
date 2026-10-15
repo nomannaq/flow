@@ -18,8 +18,9 @@ and explicit new conversations in verified retained workspaces. B10 adds local
 Codex launch preferences, advertised authentication retry, adapter compatibility
 diagnostics and readable responses with recorded-operation counts. B11 adds
 turn-by-turn history navigation, a native file tree, capture warnings and
-content-identified read-only diffs. B28 bundles a release engine for the initial
-macOS Apple Silicon target with integrity checks and packaged bridge smoke tests.
+content-identified read-only diffs. Native packaging builds a matching release
+engine for Windows/Linux x86-64 and macOS Intel/Apple Silicon, with integrity
+checks and a native CI acceptance matrix. Expanded-platform acceptance is pending.
 
 The B07 Rust workspace-preparation API and manual exercise are documented in
 [Isolated session worktrees](docs/isolated-session-worktrees.md). See
@@ -196,10 +197,12 @@ and the separate, still-required pinned Codex manual gate are in
 
 ### Bundled native engine (B28)
 
-`buildPlugin` includes the macOS Apple Silicon release engine, version/protocol
-manifest and dependency notices. `checkPackagedPlugin` smoke-tests the ZIP's engine
+`buildPlugin` includes the host's release engine, version/protocol manifest and
+dependency notices in an OS/architecture-labelled ZIP. Windows packages target
+64-bit Intel/AMD laptops. `checkPackagedPlugin` smoke-tests the ZIP's engine
 outside the checkout. Use `runIde -PflowBundledEngine=true` to exercise installed
-payload resolution in the development sandbox. See
+payload resolution in the development sandbox. `checkPackagedAgentSession` adds
+offline edits, immutable history and descendant-shutdown acceptance. See
 [Native engine packaging](docs/native-engine-packaging.md) for build commands,
 clean-machine acceptance and signing/distribution limits.
 

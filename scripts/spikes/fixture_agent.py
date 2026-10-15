@@ -71,7 +71,7 @@ for line in sys.stdin:
             send({"id": request_id, "error": {"code": -32000, "message": "Authentication required"}})
             continue
         workspace = Path(message["params"]["cwd"])
-        if workspace.resolve() != Path.cwd().resolve():
+        if not workspace.samefile(Path.cwd()):
             raise RuntimeError("session and process working directories differ")
         respond(request_id, {"sessionId": "fixture"})
     elif method == "session/prompt":
@@ -126,7 +126,7 @@ for line in sys.stdin:
             elif "Use a shell command" in pending_prompt:
                 subprocess.run(["/bin/sh", "-c", 'printf "%s\\n" "$1" > probe.txt', "fixture", value], cwd=workspace, check=True)
             else:
-                (workspace / "probe.txt").write_text(value + "\n")
+                (workspace / "probe.txt").write_bytes((value + "\n").encode())
             if "--cancel-after-write" in sys.argv:
                 # Leave the tool pending so cancellation must reconcile actual bytes.
                 pending_cancel = pending_edit

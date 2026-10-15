@@ -134,8 +134,8 @@ def run(args, evidence):
     (project / "README.md").write_text("Disposable Flow acceptance repository.\n")
     for command in (["init", "--quiet"], ["add", "README.md"], ["-c", "user.name=Flow Acceptance", "-c", "user.email=flow@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Baseline"]):
         git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-        git_env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
-        subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-c", "init.templateDir=", "-c", "core.autocrlf=false", "-C", str(project), *command], check=True, env=git_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        git_env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
+        subprocess.run(["git", "-c", f"core.hooksPath={os.devnull}", "-c", "init.templateDir=", "-c", "core.autocrlf=false", "-C", str(project), *command], check=True, env=git_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     main_files = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file() and ".git" not in p.relative_to(project).parts}
     main_index = (project / ".git/index").read_bytes()
     engine = Engine(executable, project, data)
@@ -171,6 +171,13 @@ def run(args, evidence):
                 break
             time.sleep(0.1)
         evidence["shutdownVerified"] = closed["status"] == "closed"
+        if not args.adapter:
+            heartbeat = workspace.parent / "fixture-heartbeat"
+            require(heartbeat.is_file(), "Fixture descendant never started")
+            before = heartbeat.read_bytes()
+            time.sleep(0.3)
+            require(heartbeat.read_bytes() == before, "Adapter descendant survived session close")
+            evidence["descendantStopped"] = True
     finally:
         engine.shutdown()
     inspect = subprocess.run([str(executable), "--history", "inspect", "--project-root", str(project), "--data-root", str(data)], check=True, capture_output=True, timeout=30)

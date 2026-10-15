@@ -570,6 +570,13 @@ Tasks:
 
 **Depends on:** B02, B06. **Scope:** early packaging smoke on the single V1 target.
 
+**Platform expansion (authorized 2026-10-15):** build Windows x86-64, Linux
+x86-64, Intel macOS and Apple Silicon macOS packages now, ahead of B29. Each
+package must pass native startup and offline session/history/process-cleanup
+acceptance in the CI matrix before that platform is advertised as validated.
+See [native packaging](native-engine-packaging.md). B12 real-Codex evidence,
+clean-machine installation, signing and B29 acceptance remain separate gates.
+
 Tasks:
 
 - Once B06 works, package the engine and plugin for the M0 OS/architecture and pinned IDE build; test outside the development checkout.
