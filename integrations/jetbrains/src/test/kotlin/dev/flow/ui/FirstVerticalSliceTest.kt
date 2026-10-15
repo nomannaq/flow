@@ -157,7 +157,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
         withContext(Dispatchers.EDT) { click(panel, "Refresh sessions") }
         await("retained session") { list(panel, "Sessions").model.size == 1 }
         withContext(Dispatchers.EDT) { list(panel, "Sessions").selectedIndex = 0 }
-        await("turns") { list(panel, "Turns in the selected session").model.size >= 2 }
+        await("turns", { historyState(panel) }) { list(panel, "Turns in the selected session").model.size >= 2 }
         withContext(Dispatchers.EDT) { click(panel, "All operations") }
         await("operations") { list(panel, "Recorded operations").model.size > 0 }
         val result = mutableListOf<Reviewed>()
@@ -166,7 +166,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             val label = withContext(Dispatchers.EDT) {
                 list(panel, "Recorded operations").apply { selectedIndex = index }.selectedValue.toString()
             }
-            await("file page") { tree(panel).model.getChildCount(tree(panel).model.root) > 0 }
+            await("file page", { historyState(panel) }) { tree(panel).model.getChildCount(tree(panel).model.root) > 0 }
             val selected = withContext(Dispatchers.EDT) {
                 val tree = tree(panel)
                 val root = tree.model.root as DefaultMutableTreeNode
@@ -205,13 +205,16 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
         return result
     }
 
-    private suspend fun await(description: String, condition: () -> Boolean) {
+    private fun historyState(panel: SessionHistoryPanel) = components(panel).filterIsInstance<JList<*>>().joinToString { "${it.accessibleContext.accessibleName}: count=${it.model.size}, selected=${it.selectedIndex}" } +
+        "; notes=" + components(panel).filterIsInstance<JTextComponent>().joinToString { it.text }
+
+    private suspend fun await(description: String, diagnostic: () -> String = { "" }, condition: () -> Boolean) {
         try {
             withTimeout(20000) {
                 while (!withContext(Dispatchers.EDT) { condition() }) delay(25)
             }
         } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
-            throw AssertionError("Timed out waiting for $description", error)
+            throw AssertionError("Timed out waiting for $description. ${withContext(Dispatchers.EDT) { diagnostic() }}", error)
         }
     }
     private fun components(root: Container): List<Component> = root.components.flatMap { listOf(it) + if (it is Container) components(it) else emptyList() }

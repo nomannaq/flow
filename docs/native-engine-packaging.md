@@ -205,14 +205,23 @@ signature must be applied before hashing and packaging.
 
 | Target | Observed checks in this session | Still required |
 | --- | --- | --- |
-| macOS arm64 | 74 Rust tests; 26 Kotlin/native tests; 7 Python regressions; formatting/Clippy; strict Gradle build and ZIP startup/restart/shutdown smoke; Plugin Verifier compatibility with the pinned IDE (existing API warnings) | Clean-machine installation, release signing, and strict packaged ACP shutdown on an unrestricted host |
+| macOS arm64 | 75 Rust tests; 26 Kotlin/native tests; 7 Python regressions; formatting/Clippy; strict Gradle build, ZIP startup/restart/shutdown and packaged ACP/history/descendant-shutdown acceptance; Plugin Verifier compatibility with the pinned IDE (existing API warnings) | Clean-machine installation and release signing; monitor the historical UI test timeout |
 | Linux x86-64 | Full Rust suite in an isolated Debian 12 x86-64 container, plus first-start XDG test (75 total); 7 Python regressions; release ELF/dependency/glibc inspection; offline two-edit/history/checkpoint/descendant-shutdown acceptance | Native Ubuntu CI plugin build and IDE installation; container evidence is not desktop IDE evidence |
 | Windows x86-64 | All Rust targets compile and pass Clippy with warnings denied using `x86_64-pc-windows-gnu`; platform/path/PE validation fixtures pass | Native MSVC release packaging, Windows lock regression execution, Job Object lifecycle, Kotlin/native suite, and clean-machine installation |
 | macOS Intel | Target selection, package layout and Mach-O validation fixtures | Native Intel runner build, full suite and clean-machine installation |
 
-The hosted workflow is added but has not run in this session. Cross-compilation
-checks Windows APIs and test compilation; it does not verify the MSVC payload or
-Windows execution. The native matrix must pass before claiming those platforms
+The workflow runs on pushes to `main` and `staging`, pull requests and manual
+dispatch. The first staging push was attempted, but GitHub returned
+`startup_failure` with zero jobs under a synthetic `BuildFailed` workflow whose
+record is deleted. The committed YAML passes actionlint 1.7.12; repository Actions
+are enabled and allow all actions. No Windows or Intel Mac runner was allocated.
+See the [run](https://github.com/nomannaq/flow/actions/runs/38747513905) and
+[captured API evidence](native-ci-startup-failure.json). Repository-owner/GitHub
+workflow registration or dispatch recovery is still required; its backend root
+cause is unconfirmed.
+
+Cross-compilation checks Windows APIs and test compilation; it does not verify
+the MSVC payload or Windows execution. The native matrix must pass before claiming those platforms
 are accepted. Gradle tracks the engine payload and external fixtures as test
 inputs so rebuilt binaries cannot reuse a stale test result. The historical B01
 `acp_probe` example remains explicitly Unix-only;
@@ -226,17 +235,31 @@ The final Linux suite and existing ownership/recovery tests pass with this bound
 Windows recovery reads ownership through its locked handle, because Windows file
 locks prohibit reading the same bytes through a separate handle.
 
-The macOS packaged ACP fixture stops its processes, but the release executable's
-process-group probe returns `EPERM` in this environment. Strict session acceptance
-therefore fails and retains stale ownership, as designed; it is not counted as a
-pass. The health-only packaged smoke and Kotlin/native suite pass. No cleanup
-check was weakened to accept an unverified writer shutdown.
+The macOS `EPERM` failure was a teardown race, not proof of an inaccessible
+installation. [Apple's process-group implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c)
+filters zombies from signalable processes and can return `EPERM` while the killed
+group is waiting to be reaped. The engine now retries that result within the
+existing three-second bound and still requires `ESRCH` to prove group exit;
+persistent permission failures retain writer ownership. A regression holds a
+killed group unreaped before releasing it. The signed packaged engine now passes
+the full offline ACP/history/checkpoint and descendant-heartbeat acceptance.
+
+Two intermediate full Kotlin runs hit the previously recorded history UI timeout
+(waiting for turns or a file page). The focused run and final complete 26-test
+suite passed. Timeout diagnostics now include list selections/counts and panel
+messages. That intermittent UI issue is still open; the shutdown fix does not
+claim to resolve it.
+
+A fresh Linux Gradle cache also exposed 11 missing parent-POM/BOM metadata
+checksums. Each downloaded file was independently compared with its Maven Central
+copy before adding its exact SHA-256 and origin URL. Strict metadata verification
+and the dependency lockfile remain in force; no broad trust exception was added.
 
 The current Mac archive is
 `build/distributions/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip` with SHA-256
-`a96d70dd0fca0bdb431307e621c0fefab9339a86ffc3a79e9a9fd34d86db62db`.
+`05028e583c5193689044b642b9307495c2114ce00d27d51f8b6eb5896c2e94f2`.
 Its engine SHA-256 is
-`02bdb64bbdf1b282c88b8ff65246e5fa143fb2760a6fbe1b8566dd88f8e16efb`.
+`accbeaaaa741e39020f75820be178eba4c20b72ac1e0182151b5c0b84a57bdf3`.
 These identify this local build only. B12's real-Codex acceptance stays open.
 
 ## Historical Apple Silicon B28 validation — 2026-10-15
