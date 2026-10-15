@@ -34,6 +34,38 @@ fn key(s: &str) -> MutationKey {
 }
 
 #[test]
+fn recorder_publication_failure_keeps_last_checkpoint_and_requires_recovery() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    fixture.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("baseline"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline.clone());
+    let mut recorder = Recorder::new(store.clone(), sid()).unwrap();
+    let observation = || Observation {
+        turn_id: "missing-turn".into(),
+        status: OperationStatus::Completed,
+        attribution: Attribution::CheckpointInterval,
+        tool_call_id: None,
+        evidence: "fixture".into(),
+    };
+    assert!(
+        recorder
+            .observe(capture(b"changed", 2), observation())
+            .is_err()
+    );
+    assert_eq!(recorder.checkpoint().id, baseline);
+    assert!(store.operations(sid(), 0, 100).unwrap().items.is_empty());
+    assert!(matches!(
+        recorder.observe(capture(b"changed", 3), observation()),
+        Err(Error::Invalid("recorder requires recovery"))
+    ));
+}
+
+#[test]
 fn agent_recovery_interrupts_live_records_without_replaying_permissions() {
     let fixture = Fixture::new();
     let store = fixture.open();
@@ -429,7 +461,14 @@ fn missing_corrupt_and_unreferenced_objects_are_distinguished() {
         } else {
             fs::remove_file(&path).unwrap();
         }
-        let err = HistoryStore::open(&f.project, &f.data).err().unwrap();
+        let reopened = HistoryStore::open(&f.project, &f.data).unwrap();
+        assert!(!reopened.storage_report().unwrap().writable);
+        assert_eq!(reopened.snapshot().unwrap().state["snapshots"], 1);
+        assert!(matches!(
+            reopened.publish_snapshot(key("blocked"), capture(b"new", 2)),
+            Err(Error::ReadOnly)
+        ));
+        let err = reopened.read_content(blob, 0, 100).err().unwrap();
         assert!(if corrupt {
             matches!(err, Error::CorruptContent(_))
         } else {
@@ -517,7 +556,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(store);
     let path = dir.join("history.sqlite3");
     let old = Connection::open(&path).unwrap();
-    old.execute_batch("DROP TABLE events; DROP TABLE mutations; PRAGMA user_version=1;")
+    old.execute_batch("DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
         .unwrap();
     old.execute(
         "INSERT INTO workspaces VALUES('legacy','/legacy',?1)",
@@ -699,7 +738,15 @@ fn database_failure_rolls_back_metadata_events_and_receipt() {
     let mut bad = capture(b"orphan allowed", 1);
     bad.workspace_id = WorkspaceId::try_from("unregistered".to_owned()).unwrap();
     assert!(store.publish_snapshot(key("failed"), bad).is_err());
-    assert_eq!(store.snapshot().unwrap().state, before.state);
+    let mut after_state = store.snapshot().unwrap().state;
+    let mut before_state = before.state;
+    assert!(
+        after_state["history"]["bytes"].as_u64().unwrap()
+            >= before_state["history"]["bytes"].as_u64().unwrap()
+    );
+    after_state.as_object_mut().unwrap().remove("history");
+    before_state.as_object_mut().unwrap().remove("history");
+    assert_eq!(after_state, before_state);
     assert_eq!(store.snapshot().unwrap().high_water, before.high_water);
     assert!(store.mutation(&key("failed")).unwrap().is_none());
     let id = snapshot_id(
@@ -736,8 +783,10 @@ fn database_failure_rolls_back_metadata_events_and_receipt() {
     )
     .unwrap();
     drop(conn);
+    let damaged = HistoryStore::open(&f.project, &f.data).unwrap();
+    assert!(!damaged.storage_report().unwrap().writable);
     assert!(matches!(
-        HistoryStore::open(&f.project, &f.data),
+        damaged.get_snapshot(id),
         Err(Error::CorruptMetadata)
     ));
 }
@@ -779,4 +828,431 @@ fn content_symlinks_are_never_followed() {
         Err(Error::Invalid(_))
     ));
     assert!(!missing.exists());
+}
+
+#[test]
+fn storage_budget_stops_publication_without_losing_readable_history() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline.clone());
+    let bytes = store.storage_report().unwrap().bytes;
+    store.set_storage_budget(bytes).unwrap();
+    let count = fs::read_dir(store.directory().join("blobs"))
+        .unwrap()
+        .count();
+    assert!(matches!(
+        store.publish_snapshot(key("overflow"), capture(b"new", 2)),
+        Err(Error::BudgetExceeded)
+    ));
+    assert_eq!(
+        count,
+        fs::read_dir(store.directory().join("blobs"))
+            .unwrap()
+            .count()
+    );
+    assert!(store.get_snapshot(baseline.clone()).is_ok());
+    assert!(!store.storage_report().unwrap().writable);
+    drop(store);
+    let store = f.open();
+    assert!(!store.storage_report().unwrap().writable);
+    store.set_storage_budget(1024 * 1024 * 1024).unwrap();
+    assert!(store.storage_report().unwrap().writable);
+    assert_eq!(store.checkpoint(sid()).unwrap().id, baseline);
+}
+
+#[test]
+fn unresolved_mutations_and_holds_require_explicit_recovery_handlers() {
+    let f = Fixture::new();
+    let mut store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let receipt = store
+        .claim_mutation(&key("external-write"), &"a".repeat(64))
+        .unwrap();
+    store
+        .hold_history(
+            "apply-journal".into(),
+            sid(),
+            "external mutation needs reconciliation".into(),
+        )
+        .unwrap();
+    drop(store);
+    let store = f.open();
+    assert!(!store.storage_report().unwrap().writable);
+    assert!(matches!(
+        store.publish_snapshot(key("blocked"), capture(b"new", 2)),
+        Err(Error::ReadOnly)
+    ));
+    let mut terminal = receipt;
+    terminal.status = MutationStatus::Failed;
+    terminal.outcome = Some(value!({"verified":"not applied"}));
+    store.resolve_interrupted_mutation(terminal).unwrap();
+    assert!(!store.storage_report().unwrap().writable); // active recovery hold still gates writes
+    store.release_history("apply-journal".into()).unwrap();
+    assert!(store.storage_report().unwrap().writable);
+}
+
+fn retention_fixture(store: &HistoryStore) -> (ContentId, ContentId) {
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(store, baseline.clone());
+    let mut recorder = Recorder::new(store.clone(), sid()).unwrap();
+    recorder
+        .observe(
+            capture(b"only selected session", 2),
+            Observation {
+                turn_id: "turn-1".into(),
+                status: OperationStatus::Completed,
+                attribution: Attribution::CheckpointInterval,
+                tool_call_id: None,
+                evidence: "fixture".into(),
+            },
+        )
+        .unwrap();
+    let blob = recorder.checkpoint().manifest.files["src/日本語.txt"]
+        .blob
+        .clone();
+    store
+        .agent_event(
+            sid(),
+            Some("turn-1".into()),
+            "closed".into(),
+            "session.closed".into(),
+            value!({}),
+        )
+        .unwrap();
+    (baseline, blob)
+}
+
+#[test]
+fn explicit_retention_protects_holds_shared_content_and_replay_identity() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let (baseline, blob) = retention_fixture(&store);
+    store
+        .hold_history("review".into(), sid(), "open historical review".into())
+        .unwrap();
+    assert!(store.delete_closed_session(sid(), ws()).is_err());
+    store.release_history("review".into()).unwrap();
+    let cursor = store.snapshot().unwrap().high_water;
+    // Budget exhaustion must still permit explicit retention maintenance.
+    store.set_storage_budget(1).unwrap();
+    store.delete_closed_session(sid(), ws()).unwrap();
+    assert!(matches!(store.get_session(sid()), Err(Error::NotFound)));
+    assert!(store.get_snapshot(baseline).is_ok());
+    assert!(
+        !store
+            .directory()
+            .join("blobs")
+            .join(format!("{}.zst", blob.as_str()))
+            .exists()
+    );
+    assert_ne!(
+        store.snapshot().unwrap().high_water.store_id,
+        cursor.store_id
+    );
+    assert!(matches!(
+        store.replay(&ReplayParams {
+            after: cursor,
+            limit: 100
+        }),
+        Err(Error::InvalidCursor)
+    ));
+    assert_eq!(store.storage_report().unwrap().pending_deletions, 0);
+    store.finish_retention().unwrap();
+}
+
+#[test]
+fn retention_rejects_active_and_shared_workspace_sessions() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let (baseline, _) = retention_fixture(&store);
+    let mut other = store.get_session(sid()).unwrap();
+    other.id = SessionId::try_from("another-session".to_owned()).unwrap();
+    store.create_session(key("another-session"), other).unwrap();
+    assert!(store.delete_closed_session(sid(), ws()).is_err());
+    store
+        .agent_event(
+            sid(),
+            None,
+            "ready".into(),
+            "session.ready".into(),
+            value!({}),
+        )
+        .unwrap();
+    assert!(store.delete_closed_session(sid(), ws()).is_err());
+    assert!(store.get_snapshot(baseline).is_ok());
+}
+
+#[test]
+fn recovery_uses_operation_commit_not_unlinked_snapshot() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let (baseline, _) = retention_fixture(&store);
+    let committed = store.checkpoint(sid()).unwrap().id;
+    assert_ne!(baseline, committed);
+    store
+        .publish_snapshot(key("unlinked"), capture(b"abandoned", 3))
+        .unwrap();
+    drop(store);
+    let store = f.open();
+    let mut recorder = Recorder::recover(store.clone(), sid()).unwrap();
+    assert_eq!(recorder.checkpoint().id, committed);
+    recorder
+        .observe(
+            capture(b"current workspace", 4),
+            Observation {
+                turn_id: "turn-1".into(),
+                status: OperationStatus::Interrupted,
+                attribution: Attribution::Ambiguous,
+                tool_call_id: None,
+                evidence: "recovery".into(),
+            },
+        )
+        .unwrap();
+    let operations = store.operations(sid(), 0, 100).unwrap();
+    assert_eq!(operations.items.len(), 2);
+    assert_eq!(operations.items[1].before, committed);
+    assert_eq!(operations.items[1].status, OperationStatus::Interrupted);
+}
+
+#[test]
+fn deletion_crash_manifest_is_retryable_and_protects_republished_content() {
+    for republish in [false, true] {
+        let f = Fixture::new();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "store::tests::retention_crash_child",
+                "--nocapture",
+            ])
+            .env("FLOW_B25_CRASH_ROOT", f._temp.path())
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(86),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let store = f.open();
+        assert_eq!(store.storage_report().unwrap().pending_deletions, 1);
+        let blob = ContentId::hash(b"only selected session");
+        let path = store
+            .directory()
+            .join("blobs")
+            .join(format!("{}.zst", blob.as_str()));
+        assert!(path.exists());
+        if republish {
+            store
+                .publish_snapshot(key("reuse"), capture(b"only selected session", 3))
+                .unwrap();
+        }
+        store.finish_retention().unwrap();
+        assert_eq!(path.exists(), republish);
+        assert_eq!(store.storage_report().unwrap().pending_deletions, 0);
+        drop(store);
+        assert!(f.open().storage_report().unwrap().writable);
+    }
+}
+#[test]
+fn retention_crash_child() {
+    let Some(root) = std::env::var_os("FLOW_B25_CRASH_ROOT") else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let project = root.join("repository with spaces");
+    let store = HistoryStore::open(&project, &root.join("data")).unwrap();
+    store
+        .register_workspace(key("workspace"), workspace(&project))
+        .unwrap();
+    retention_fixture(&store);
+    store
+        .call(|db| {
+            db.crash = Some(Boundary::AfterCommit);
+            Ok(())
+        })
+        .unwrap();
+    store.delete_closed_session(sid(), ws()).unwrap();
+    panic!("expected crash");
+}
+
+#[test]
+fn sqlite_disk_full_and_lock_fail_without_phantom_operation() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline.clone());
+    // SQLite's actual SQLITE_FULL path, without filling the user's filesystem.
+    store
+        .call(|db| {
+            let pages: i64 = db
+                .conn
+                .pragma_query_value(None, "page_count", |r| r.get(0))?;
+            db.conn.pragma_update(None, "max_page_count", pages)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        store
+            .agent_event(
+                sid(),
+                None,
+                "running".into(),
+                "large.event".into(),
+                value!({"text":"x".repeat(30000)})
+            )
+            .is_err()
+    );
+    assert!(!store.storage_report().unwrap().writable);
+    assert_eq!(store.checkpoint(sid()).unwrap().id, baseline);
+    assert!(store.operations(sid(), 0, 100).unwrap().items.is_empty());
+    drop(store);
+    let store = f.open();
+    let lock = Connection::open(store.directory().join("history.sqlite3")).unwrap();
+    lock.execute_batch("BEGIN IMMEDIATE").unwrap();
+    assert!(
+        store
+            .agent_event(
+                sid(),
+                None,
+                "running".into(),
+                "locked.event".into(),
+                value!({})
+            )
+            .is_err()
+    );
+    lock.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(store.checkpoint(sid()).unwrap().id, baseline);
+}
+
+#[test]
+fn restart_after_operation_commit_uses_durable_checkpoint_once() {
+    let f = Fixture::new();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "store::tests::checkpoint_crash_child",
+            "--nocapture",
+        ])
+        .env("FLOW_B25_CHECKPOINT_ROOT", f._temp.path())
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(86),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let store = f.open();
+    let mut recorder = Recorder::recover(store.clone(), sid()).unwrap();
+    assert_eq!(
+        recorder.checkpoint().manifest.files["src/日本語.txt"].blob,
+        ContentId::hash(b"durable")
+    );
+    let observed = recorder
+        .observe(
+            capture(b"durable", 3),
+            Observation {
+                turn_id: "turn-1".into(),
+                status: OperationStatus::Interrupted,
+                attribution: Attribution::Ambiguous,
+                tool_call_id: None,
+                evidence: "recovery".into(),
+            },
+        )
+        .unwrap();
+    assert!(observed.is_none());
+    assert_eq!(store.operations(sid(), 0, 100).unwrap().items.len(), 1);
+}
+#[test]
+fn checkpoint_crash_child() {
+    let Some(root) = std::env::var_os("FLOW_B25_CHECKPOINT_ROOT") else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let project = root.join("repository with spaces");
+    let store = HistoryStore::open(&project, &root.join("data")).unwrap();
+    store
+        .register_workspace(key("workspace"), workspace(&project))
+        .unwrap();
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let mut recorder = Recorder::new(store.clone(), sid()).unwrap();
+    store
+        .call(|db| {
+            db.crash = Some(Boundary::OperationCommitted);
+            Ok(())
+        })
+        .unwrap();
+    recorder
+        .observe(
+            capture(b"durable", 2),
+            Observation {
+                turn_id: "turn-1".into(),
+                status: OperationStatus::Completed,
+                attribution: Attribution::CheckpointInterval,
+                tool_call_id: None,
+                evidence: "fixture".into(),
+            },
+        )
+        .unwrap();
+    panic!("expected crash before in-memory checkpoint advancement");
+}
+
+#[test]
+fn retention_preserves_blobs_shared_by_another_workspace_and_rejects_id_reuse() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let (_, blob) = retention_fixture(&store);
+    let mut original = store.get_session(sid()).unwrap();
+    let other_path = f.project.join("other");
+    fs::create_dir(&other_path).unwrap();
+    let mut other = workspace(&f.project);
+    other.id = WorkspaceId::try_from("other-workspace".to_owned()).unwrap();
+    other.worktree_path = other_path;
+    store
+        .register_workspace(key("other-workspace"), other.clone())
+        .unwrap();
+    let mut input = capture(b"only selected session", 3);
+    input.workspace_id = other.id;
+    let shared = snapshot_id(store.publish_snapshot(key("shared"), input).unwrap());
+    store.delete_closed_session(sid(), ws()).unwrap();
+    assert!(store.get_snapshot(shared).is_ok());
+    assert_eq!(
+        store.read_content(blob, 0, 100).unwrap().bytes,
+        b"only selected session"
+    );
+    original.status = "starting".into();
+    assert!(matches!(
+        store.create_session(key("recreate"), original),
+        Err(Error::Conflict)
+    ));
 }

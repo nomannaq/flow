@@ -1,7 +1,7 @@
 //! B07: owned clean-commit worktrees, not a security sandbox or an agent host.
 //! All methods block. Async callers must use a bounded blocking worker and keep
 //! the returned writer guard alive until every workspace writer has stopped.
-mod io;
+pub(crate) mod io;
 use history::{ContentId, Coverage, FileInput, FileKind, HistoryStore, SnapshotInput, Workspace};
 use io::{Lease, directory, git, git_input, now, read, text, token, write};
 pub use io::{Owner, Recovery};
@@ -24,6 +24,7 @@ pub enum Error {
     Invalid(&'static str),
     Busy,
     StaleOwner(Owner),
+    Unstable,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -33,6 +34,7 @@ impl std::fmt::Display for Error {
             Self::Git(_) => "Git operation failed; check repository access and inspect retained preparation",
             Self::Invalid(message) => message,
             Self::Busy => "another Flow writer owns this repository or workspace; close it first",
+            Self::Unstable => "workspace changed during capture; no checkpoint was advanced",
             Self::StaleOwner(_) => "previous Flow owner exited without releasing its lease; explicitly acknowledge its instance token to recover",
         })
     }
@@ -119,6 +121,14 @@ pub struct PreparedWorktree {
     _writer: Lease,
     _repository: Arc<Lease>,
 }
+impl PreparedWorktree {
+    /// Release OS handles but preserve stale ownership when shutdown is unknown.
+    pub(crate) fn quarantine(&self) {
+        self._workspace.preserve_owner();
+        self._writer.preserve_owner();
+        self._repository.preserve_owner();
+    }
+}
 impl WorktreeManager {
     pub fn open(project: &Path, store: HistoryStore, recovery: Recovery) -> Result<Self> {
         let repository = Repository::discover(project)?;
@@ -157,6 +167,9 @@ impl WorktreeManager {
         choice: BaselineChoice,
         recovery: Recovery,
     ) -> Result<PreparedWorktree> {
+        if !self.store.storage_report()?.writable {
+            return Err(Error::History(history::Error::ReadOnly));
+        }
         self.prepare_inner(choice, recovery, |_| Ok(()))
     }
     fn prepare_inner(
@@ -472,38 +485,42 @@ impl WorktreeManager {
         Ok(record)
     }
     fn verify_owned(&self, record: &Preparation) -> Result<()> {
-        let path = &record.workspace.worktree_path;
-        if path.canonicalize()? != *path || !fs::symlink_metadata(path)?.is_dir() {
-            return Err(Error::Invalid("workspace path escapes its owned directory"));
-        }
-        io::regular(&path.join(".git"))?;
-        let common = PathBuf::from(text(git(
-            path,
-            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        )?)?)
-        .canonicalize()?;
-        let admin =
-            PathBuf::from(text(git(path, ["rev-parse", "--absolute-git-dir"])?)?).canonicalize()?;
-        if common != self.repository.common_dir
-            || admin.parent() != Some(common.join("worktrees").as_path())
-        {
-            return Err(Error::Invalid(
-                "workspace Git administration is not owned by this repository",
-            ));
-        }
-        let backlink = text(fs::read(admin.join("gitdir"))?)?;
-        let reason = text(fs::read(admin.join("locked"))?)?;
-        if Path::new(&backlink) != path.join(".git")
-            || reason != format!("flow-{}", record.workspace.owner_token)
-            || text(git(path, ["rev-parse", "HEAD"])?)? != record.workspace.base_commit
-            || !fs::read(admin.join("HEAD"))?.starts_with(record.workspace.base_commit.as_bytes())
-        {
-            return Err(Error::Invalid(
-                "workspace identity, detached HEAD or ownership marker changed; retain for inspection",
-            ));
-        }
-        Ok(())
+        verify_owned_record(record)
     }
+}
+
+pub(crate) fn verify_owned_record(record: &Preparation) -> Result<()> {
+    let path = &record.workspace.worktree_path;
+    if path.canonicalize()? != *path || !fs::symlink_metadata(path)?.is_dir() {
+        return Err(Error::Invalid("workspace path escapes its owned directory"));
+    }
+    io::regular(&path.join(".git"))?;
+    let common = PathBuf::from(text(git(
+        path,
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?)?)
+    .canonicalize()?;
+    let admin =
+        PathBuf::from(text(git(path, ["rev-parse", "--absolute-git-dir"])?)?).canonicalize()?;
+    if common != record.workspace.git_common_dir
+        || admin.parent() != Some(common.join("worktrees").as_path())
+    {
+        return Err(Error::Invalid(
+            "workspace Git administration is not owned by this repository",
+        ));
+    }
+    let backlink = text(fs::read(admin.join("gitdir"))?)?;
+    let reason = text(fs::read(admin.join("locked"))?)?;
+    if Path::new(&backlink) != path.join(".git")
+        || reason != format!("flow-{}", record.workspace.owner_token)
+        || text(git(path, ["rev-parse", "HEAD"])?)? != record.workspace.base_commit
+        || !fs::read(admin.join("HEAD"))?.starts_with(record.workspace.base_commit.as_bytes())
+    {
+        return Err(Error::Invalid(
+            "workspace identity, detached HEAD or ownership marker changed; retain for inspection",
+        ));
+    }
+    Ok(())
 }
 
 fn key(owner: &str, suffix: &str) -> Result<MutationKey> {
@@ -576,6 +593,35 @@ fn validate(root: &Path) -> Result<()> {
 /// Tracked paths bypass ignore rules. Untracked discovery has explicit local
 /// ignore semantics; it never follows symlinks or reads an external link target.
 pub fn capture(root: &Path) -> Result<BTreeMap<String, FileInput>> {
+    stable_capture(|| capture_once(root, false))
+}
+
+/// Recorder coverage includes ignored/generated files; only Git control data is
+/// outside the content domain. Limits fail closed rather than invent deletions.
+pub fn capture_all(root: &Path) -> Result<BTreeMap<String, FileInput>> {
+    stable_capture(|| capture_once(root, true))
+}
+
+fn stable_capture(
+    mut scan: impl FnMut() -> Result<BTreeMap<String, FileInput>>,
+) -> Result<BTreeMap<String, FileInput>> {
+    let mut previous = None;
+    for _ in 0..4 {
+        match scan() {
+            Ok(files) => {
+                if previous.as_ref() == Some(&files) {
+                    return Ok(files);
+                }
+                previous = Some(files);
+            }
+            Err(Error::Unstable) => previous = None,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Unstable)
+}
+
+fn capture_once(root: &Path, include_ignored: bool) -> Result<BTreeMap<String, FileInput>> {
     let tracked = git(root, ["ls-files", "-z"])?;
     let mut paths = BTreeSet::new();
     for path in tracked.split(|b| *b == 0).filter(|p| !p.is_empty()) {
@@ -589,6 +635,9 @@ pub fn capture(root: &Path) -> Result<BTreeMap<String, FileInput>> {
         .hidden(false)
         .parents(false)
         .git_global(false)
+        .git_ignore(!include_ignored)
+        .git_exclude(!include_ignored)
+        .ignore(!include_ignored)
         .follow_links(false)
         .filter_entry(|entry| entry.file_name() != ".git")
         .build()
@@ -649,6 +698,9 @@ pub fn capture(root: &Path) -> Result<BTreeMap<String, FileInput>> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue, // tracked deletion
             Err(e) => return Err(e.into()),
         };
+        if meta.is_dir() {
+            continue;
+        } // tracked file replaced by a directory
         let (kind, bytes) = if meta.file_type().is_symlink() {
             (
                 FileKind::Symlink,
@@ -656,15 +708,25 @@ pub fn capture(root: &Path) -> Result<BTreeMap<String, FileInput>> {
             )
         } else if meta.is_file() {
             let mut bytes = Vec::new();
-            File::open(&path)?
+            let file = File::open(&path)?;
+            if identity(&file.metadata()?) != identity(&meta) {
+                return Err(Error::Unstable);
+            }
+            (&file)
                 .take(history::MAX_BLOB_BYTES as u64 + 1)
                 .read_to_end(&mut bytes)?;
+            if identity(&file.metadata()?) != identity(&meta) {
+                return Err(Error::Unstable);
+            }
             (FileKind::Regular, bytes)
         } else {
             return Err(Error::Invalid(
                 "nested repositories and special files are unsupported",
             ));
         };
+        if identity(&fs::symlink_metadata(&path).map_err(|_| Error::Unstable)?) != identity(&meta) {
+            return Err(Error::Unstable);
+        }
         total += bytes.len();
         if bytes.len() > history::MAX_BLOB_BYTES || total > history::MAX_CAPTURE_BYTES {
             return Err(Error::Invalid("workspace exceeds capture size limit"));
@@ -673,12 +735,25 @@ pub fn capture(root: &Path) -> Result<BTreeMap<String, FileInput>> {
             relative,
             FileInput {
                 bytes,
-                mode: meta.permissions().mode() & 0o777,
+                mode: meta.permissions().mode() & 0o7777,
                 kind,
             },
         );
     }
     Ok(files)
+}
+fn identity(meta: &fs::Metadata) -> (u64, u64, u64, u32, i64, i64, i64, i64) {
+    use std::os::unix::fs::MetadataExt;
+    (
+        meta.dev(),
+        meta.ino(),
+        meta.size(),
+        meta.mode(),
+        meta.mtime(),
+        meta.mtime_nsec(),
+        meta.ctime(),
+        meta.ctime_nsec(),
+    )
 }
 fn source_fingerprint(root: &Path) -> Result<ContentId> {
     let head = git(root, ["rev-parse", "HEAD"])?;
