@@ -26,7 +26,24 @@ pub(crate) fn directory(path: &Path) -> Result<()> {
     Ok(())
 }
 pub(crate) fn sync_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
     File::open(path)?.sync_all()?;
+    // Windows has no unprivileged directory fsync equivalent. File contents and
+    // SQLite commits are flushed separately; directory durability uses NTFS's
+    // journal. Crash/power-loss acceptance is a separate Windows release gate.
+    #[cfg(windows)]
+    if !fs::symlink_metadata(path)?.is_dir() {
+        return Err(Error::Invalid("history directory was replaced"));
+    }
+    Ok(())
+}
+pub(crate) fn sync_file(path: &Path) -> Result<()> {
+    // FlushFileBuffers requires a writable handle on Windows.
+    let mut options = File::options();
+    options.read(true);
+    #[cfg(windows)]
+    options.write(true);
+    options.open(path)?.sync_all()?;
     Ok(())
 }
 pub(crate) fn regular(path: &Path) -> Result<()> {
@@ -51,7 +68,7 @@ impl Blobs {
         let path = self.path(&id);
         if fs::symlink_metadata(&path).is_ok() {
             self.read(&id, bytes.len() as u64)?;
-            File::open(&path)?.sync_all()?;
+            sync_file(&path)?;
             sync_dir(&self.root)?;
             return Ok(id);
         }
@@ -66,7 +83,7 @@ impl Blobs {
             Ok(_) => {}
             Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
                 self.read(&id, bytes.len() as u64)?;
-                File::open(&path)?.sync_all()?;
+                sync_file(&path)?;
             }
             Err(e) => return Err(Error::Io(e.error)),
         }

@@ -41,6 +41,18 @@ pub const AGENT_ENV: &[&str] = &[
     "HOME",
     "PATH",
     "TMPDIR",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "SYSTEMROOT",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "PATHEXT",
+    "COMSPEC",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMDATA",
     "LANG",
     "LC_ALL",
     "TERM",
@@ -60,7 +72,8 @@ pub const AGENT_ENV: &[&str] = &[
 
 /// Re-exec launcher preserves SDK child/process-group ownership while supplying
 /// cwd and an explicit environment. Called only through flow-engine's private mode.
-pub fn launch(arguments: impl Iterator<Item = std::ffi::OsString>) -> std::io::Error {
+pub async fn launch(arguments: impl Iterator<Item = std::ffi::OsString>) -> std::io::Error {
+    #[cfg(unix)]
     use std::os::unix::process::CommandExt;
     let mut arguments = arguments;
     let Some(workspace) = arguments.next() else {
@@ -72,7 +85,8 @@ pub fn launch(arguments: impl Iterator<Item = std::ffi::OsString>) -> std::io::E
     if crate::maintenance::launched_process(Path::new(&workspace)).is_err() {
         return std::io::Error::other("cannot persist adapter process ownership");
     }
-    std::process::Command::new(executable)
+    let mut command = std::process::Command::new(executable);
+    command
         .args(arguments)
         .current_dir(workspace)
         .env_clear()
@@ -80,8 +94,30 @@ pub fn launch(arguments: impl Iterator<Item = std::ffi::OsString>) -> std::io::E
             AGENT_ENV
                 .iter()
                 .filter_map(|name| std::env::var_os(name).map(|value| (*name, value))),
-        )
-        .exec()
+        );
+    #[cfg(unix)]
+    {
+        command.exec()
+    }
+    #[cfg(windows)]
+    {
+        use process_wrap::tokio::{CommandWrap, CreationFlags, JobObject, KillOnDrop};
+        // The SDK owns this launcher. If it is terminated, Windows closes the
+        // job handle and terminates the adapter and all non-escaped descendants.
+        // Assignment happens while suspended, before the adapter can spawn.
+        let mut wrapped = CommandWrap::from(tokio::process::Command::from(command));
+        let mut flags = CreationFlags(Default::default());
+        flags.0.0 = 0x08000000; // CREATE_NO_WINDOW
+        wrapped.wrap(flags).wrap(KillOnDrop).wrap(JobObject);
+        let mut child = match wrapped.spawn() {
+            Ok(child) => child,
+            Err(error) => return error,
+        };
+        match child.wait().await {
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(error) => error,
+        }
+    }
 }
 fn id(prefix: &str) -> Result<String, Error> {
     let mut bytes = [0; 16];
@@ -398,10 +434,16 @@ async fn run_session(
     let source = params.source_session_id.clone();
     let executable = PathBuf::from(&params.executable);
     let prepared = tokio::task::spawn_blocking(move || {
-        use std::os::unix::fs::PermissionsExt;
         let meta =
             std::fs::metadata(&executable).map_err(|_| "Adapter executable is unavailable")?;
-        if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+        #[cfg(unix)]
+        let runnable = {
+            use std::os::unix::fs::PermissionsExt;
+            meta.permissions().mode() & 0o111 != 0
+        };
+        #[cfg(windows)]
+        let runnable = executable.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"));
+        if !meta.is_file() || !runnable {
             return Err("Select an executable ACP adapter");
         }
         let root = store

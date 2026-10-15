@@ -21,6 +21,10 @@ tracing.workspace = true
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1.5", features = ["process"] }
 
+[target.'cfg(windows)'.dependencies]
+process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "job-object", "kill-on-drop", "creation-flags"] }
+winapi-util = "0.1.11"
+
 [dev-dependencies]
 blake3.workspace = true
 futures-util.workspace = true

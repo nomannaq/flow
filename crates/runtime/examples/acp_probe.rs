@@ -22,6 +22,7 @@ fn record(trace: &Trace, event: Value) {
     }
 }
 
+#[cfg(unix)]
 fn launch(mut arguments: impl Iterator<Item = String>) -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::process::CommandExt;
 
@@ -57,6 +58,11 @@ fn launch(mut arguments: impl Iterator<Item = String>) -> Result<(), Box<dyn std
         .envs(environment)
         .exec();
     Err(error.into())
+}
+
+#[cfg(not(unix))]
+fn launch(_: impl Iterator<Item = String>) -> Result<(), Box<dyn std::error::Error>> {
+    Err("The historical B01 launcher is Unix-only; use checkPackagedAgentSession for Windows acceptance".into())
 }
 
 fn diagnostic(line: &str) -> &'static str {
