@@ -11,20 +11,29 @@ isolation, project context, and native review tools around them.
 workspace, durable history storage, isolated clean-commit worktree preparation,
 versioned stdio engine protocol, and a native Swing tool window connected to a
 project-scoped Rust engine. B08 adds ACP agent sessions, streaming activity,
-one-time permission controls and cancellation. Verified edit recording and
-native historical review remain upcoming milestones.
+one-time permission controls and cancellation. B09 records verified filesystem
+intervals into immutable history. B25 adds explicit recovery and retention; B14
+adds retained-session browsing, bounded native historical diffs, archive controls,
+and explicit new conversations in verified retained workspaces. B10 adds local
+Codex launch preferences, advertised authentication retry, adapter compatibility
+diagnostics and readable responses with recorded-operation counts. B11 adds
+turn-by-turn history navigation, a native file tree, capture warnings and
+content-identified read-only diffs. B28 bundles a release engine for the initial
+macOS Apple Silicon target with integrity checks and packaged bridge smoke tests.
 
 The B07 Rust workspace-preparation API and manual exercise are documented in
 [Isolated session worktrees](docs/isolated-session-worktrees.md). See
 [ACP agent sessions](docs/acp-agent-sessions.md) to run an adapter from the native UI.
 
-## Planned features
+## Features and roadmap
 
 ### Review every recorded change
 
 Explore a session's operation history and open historical edits in JetBrains'
-native diff viewer. Immutable before/after snapshots will preserve each recorded
-change, even when an agent edits the same file again later.
+native diff viewer through **Flow → History**. Immutable before/after snapshots
+preserve each recorded change, even when an agent edits the same file again later.
+The initial browser supports text previews up to 64 KiB per side; the full review
+timeline and richer file navigation are planned.
 
 History will reflect verified filesystem contents, with attribution to agent
 operations when reliable. A recorded operation represents an observed change
@@ -145,8 +154,54 @@ ACP adapter, enter its arguments as a JSON array, click **Use current commit**,
 and submit a task. Flow creates an isolated worktree and shows activity and
 permission controls. Follow-ups reuse that session; cancellation and closure
 retain partial work. The [B08 guide](docs/acp-agent-sessions.md) covers setup,
-authentication, limits and validation. Verified filesystem operation recording
-arrives in B09; agent tool events alone do not increment recorded-operation counts.
+authentication, limits and validation. [B09 operation recording](docs/workspace-operation-recorder.md)
+reconciles actual file contents; agent tool events alone do not increment recorded-operation counts.
+
+### Codex task workflow (B10)
+
+Save your adapter path and model locally, choose a committed baseline, and submit
+text tasks in an isolated worktree. If native login is required, choose an
+advertised method and **Authenticate and retry**. Streamed replies are joined
+into readable text; the operation count reflects committed history. See the
+[Codex workflow](docs/codex-task-workflow.md) for compatibility limits and the
+opt-in real-agent acceptance command. Real-agent release acceptance is pending
+that check; fixture tests do not certify arbitrary adapters or account settings.
+
+### Retained sessions and local history (B14)
+
+Use **Flow → History → Refresh sessions** to select an earlier session, operation
+and changed file, then open its native diff. Close the active agent before
+archiving its history or starting another conversation. **New conversation…**
+uses a retained workspace only after explicit stopped-writer confirmation and
+checkpoint verification. Engine restart never resumes an agent automatically.
+See [Session lifecycle and retained history](docs/session-lifecycle-and-history.md)
+for the walkthrough, recovery requirements and current preview limits.
+
+### Native history review (B11)
+
+In **Flow → History**, select a session, turn, operation and file. Inspect status,
+attribution and capture warnings, then press Enter to open the immutable diff.
+**Open CURRENT workspace file** navigates separately to live content and reports
+missing/moved locations. See [Native operation history review](docs/native-operation-history-review.md)
+for paging, content identity checks, encoding limits and restart validation.
+
+### First vertical slice acceptance (B12)
+
+The native platform test drives the actual Swing task, permission and history
+controls through the Rust engine and controlled ACP fixture. It checks consecutive
+edits, cancellation after a write, failure after changed bytes, immutable native
+diff requests after restart, and preservation of developer changes. Run instructions
+and the separate, still-required pinned Codex manual gate are in
+[First vertical slice acceptance](docs/first-vertical-slice.md).
+
+### Bundled native engine (B28)
+
+`buildPlugin` includes the macOS Apple Silicon release engine, version/protocol
+manifest and dependency notices. `checkPackagedPlugin` smoke-tests the ZIP's engine
+outside the checkout. Use `runIde -PflowBundledEngine=true` to exercise installed
+payload resolution in the development sandbox. See
+[Native engine packaging](docs/native-engine-packaging.md) for build commands,
+clean-machine acceptance and signing/distribution limits.
 
 ### Native engine bridge (B06)
 
@@ -194,7 +249,7 @@ The `history` crate now stores immutable manifests and BLAKE3/zstd content,
 with SQLite metadata, durable events and mutation receipts on one bounded writer
 thread. It preserves file modes/types, detects damaged content and backs up older
 schemas before migration. Storage is outside the repository and connected to the
-IDE; verified capture of agent edits remains B09.
+IDE. B09 now reconciles agent worktree changes into immutable operation records.
 
 See the [storage reference](docs/history-storage.md) for the publication order,
 API boundaries, retry rules, limits and crash-recovery tests.
@@ -303,3 +358,20 @@ the background case verifies final contents, not every intermediate write.
 Plugin-unload cleanup and adapter release provenance remain pending before G0.
 Gradle's local lock-coordination socket is blocked in the assistant's
 execution environment; run native validation commands in your Mac's Terminal.
+
+### History recovery and retention
+
+B25 is implemented on the existing `feat/workspace-operation-recorder` branch.
+Flow checks retained history on startup, preserves readable data when content is
+missing or damaged, and stops new history writes at a configurable storage budget
+(default 10 GiB). The Engine tab displays storage usage and recovery errors.
+
+Use the offline maintenance commands to inspect interrupted sessions, reconcile
+current worktree contents without replaying agent actions, or explicitly delete a
+closed session's history. Close the project's Flow engine first. Recovery and
+retention require verified writer shutdown; an isolated worktree does not stop
+background processes. Worktree files and baseline snapshots are retained.
+
+See [history recovery and retention](docs/history-recovery-and-retention.md) for
+commands, crash guarantees, storage accounting, and the recovery hook required by
+future change-application features.

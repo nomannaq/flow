@@ -68,9 +68,11 @@ their own paginated queries; this milestone does not fabricate them from events.
 1. An explicit absolute `-Dflow.engine.path=/path/to/flow-engine` selects a development
    executable. Paths are passed as arguments, never through a shell. No repository
    configuration or PATH search selects the executable.
-2. Otherwise resolve `bin/flow-engine` relative to the installed plugin and require
-   its adjacent `flow-engine.sha256` to match. Cross-platform binary bundling and
-   signing remain the packaging milestone; B06's ZIP does not bundle an engine.
+2. B28 now resolves `bin/aarch64-apple-darwin/flow-engine` from the installed
+   plugin's `distribution.json`, verifies platform/version/protocol and digest,
+   and restores owner execute if installation lost it. See
+   [Native engine packaging](native-engine-packaging.md). B06's original ZIP had
+   no payload; current `buildPlugin` packages the initial macOS arm64 target.
 
 `./gradlew runIde` builds the Rust engine and passes the absolute debug executable
 path automatically. The engine runs in the canonical open project directory with

@@ -5,9 +5,9 @@ process integration. Flow adds a B07 workspace lease, session/turn persistence,
 permission decisions, a bounded activity projection and native Swing controls.
 
 These are development integration controls. Product writing-session readiness
-still depends on B09 verified recording, B25 recovery and the B10 real-adapter
-acceptance gate. Retained worktree files are the available result at this stage;
-Flow cannot yet provide historical edit review or apply them to the main project.
+depends on the B10 real-adapter acceptance gate. B25 recovery and B14 retained
+history are implemented. Native bounded historical diffs are available; applying
+changes to the main project remains future work.
 
 ## Run a session
 
@@ -42,11 +42,14 @@ open **Flow → Session**. The repository must meet the B07 clean-baseline envel
    ends the connection, stops the SDK-owned process group and retains the worktree.
 
 The native panel shows the last 100 activity items and pending approvals from Rust.
-It is a projection, not a second history database. Configuration fields currently
-belong to the open panel; reopen/restart does not silently recreate an agent.
+It is a projection, not a second history database. B10 saves the adapter path and
+model locally when requested; other configuration fields remain ephemeral.
+Reopen/restart does not silently recreate an agent. See the [Codex workflow](codex-task-workflow.md)
+for authentication retry, compatibility diagnostics and acceptance.
 The Engine tab retains health/counts and restart controls. Recorded operation
-counts remain zero for B08 agent edits: B09 will verify and record filesystem
-changes. Do not use B08 tool notifications as proof of an atomic file delta.
+counts now reflect B09's [verified filesystem observations](workspace-operation-recorder.md).
+An unchanged checkpoint adds no operation. Tool notifications remain attribution
+hints, not proof of an atomic file delta. Use **Flow → History** to reopen recorded diffs.
 
 If **Use current commit** cannot fill the baseline field, run `git rev-parse HEAD`
 in the open project's terminal. A newly initialized repository needs an initial

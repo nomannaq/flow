@@ -21,6 +21,21 @@
       ],
       "type": "object"
     },
+    "AgentAuthenticate": {
+      "properties": {
+        "methodId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "methodId"
+      ],
+      "type": "object"
+    },
     "AgentCommand": {
       "properties": {
         "prompt": {
@@ -79,6 +94,7 @@
           ]
         },
         "commit": {
+          "default": "",
           "type": "string"
         },
         "executable": {
@@ -87,11 +103,24 @@
         },
         "prompt": {
           "type": "string"
+        },
+        "sourceSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit new conversation in a retained workspace; never upstream resume."
+        },
+        "writersStopped": {
+          "type": "boolean"
         }
       },
       "required": [
         "executable",
-        "commit",
         "prompt"
       ],
       "type": "object"
@@ -112,11 +141,19 @@
           "type": "array"
         },
         "capabilities": true,
+        "compatibility": {
+          "type": "string"
+        },
         "permissions": {
           "items": {
             "$ref": "#/$defs/AgentPermission"
           },
           "type": "array"
+        },
+        "recordedOperations": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "sessionId": {
           "anyOf": [
@@ -284,6 +321,69 @@
       ],
       "type": "object"
     },
+    "HistoryContentIds": {
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "HistoryQuery": {
+      "properties": {
+        "after": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentIds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryContentIds"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fileIndex": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
     "HostCapabilities": {
       "properties": {
         "commitSelection": {
@@ -407,7 +507,15 @@
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "history.diff",
+        "history.files",
+        "history.turns",
+        "history.location",
+        "history.operations",
+        "sessions.archive",
+        "sessions.list",
         "sessions.baseline",
+        "sessions.authenticate",
         "sessions.start",
         "sessions.active",
         "sessions.prompt",
@@ -489,6 +597,9 @@
     },
     "PermissionChoice": {
       "properties": {
+        "allowOnce": {
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },
@@ -701,6 +812,22 @@
       "pattern": "^[A-Za-z0-9._:-]+$",
       "type": "string"
     },
+    "SessionList": {
+      "description": "Bounded read queries for retained history. Numeric cursors are decimal strings\nso a JavaScript host never loses a SQLite sequence's precision.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "StateSnapshot": {
       "properties": {
         "highWater": {
@@ -730,6 +857,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A schema catalogue, not an additional wire envelope. Review generated changes.",
   "properties": {
+    "agentAuthenticate": {
+      "$ref": "#/$defs/AgentAuthenticate"
+    },
     "agentCommand": {
       "$ref": "#/$defs/AgentCommand"
     },
@@ -750,6 +880,9 @@
     },
     "healthResult": {
       "$ref": "#/$defs/HealthResult"
+    },
+    "historyQuery": {
+      "$ref": "#/$defs/HistoryQuery"
     },
     "initializeParams": {
       "$ref": "#/$defs/InitializeParams"
@@ -781,6 +914,9 @@
     "response": {
       "$ref": "#/$defs/Response"
     },
+    "sessionList": {
+      "$ref": "#/$defs/SessionList"
+    },
     "snapshot": {
       "$ref": "#/$defs/StateSnapshot"
     }
@@ -800,8 +936,11 @@
     "replayParams",
     "replayPage",
     "mutationReceipt",
+    "sessionList",
+    "historyQuery",
     "agentStart",
     "agentCommand",
+    "agentAuthenticate",
     "permissionDecision",
     "agentView"
   ],
