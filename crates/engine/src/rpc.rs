@@ -253,7 +253,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             Err(()) => send(&mut output, failure(error::INVALID_PARAMS)).await?,
                         }
                     }
-                    Some(method @ (Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
+                    Some(method @ (Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck | Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
                         let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
                         if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
                         let token = CancellationToken::new(); pending.insert(id.clone(), token.clone());
@@ -261,7 +261,11 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         jobs.push(Box::pin(async move {
                             // A timed-out archive may have committed. Retrying is idempotent;
                             // neither cancellation nor reconnect replays a new conversation.
-                            let work = tokio::task::spawn_blocking(move || crate::session_history::request(store, method, request.params));
+                            let work = tokio::task::spawn_blocking(move || {
+                                if matches!(method, Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck) {
+                                    crate::candidates::request(store,method,request.params)
+                                } else {crate::session_history::request(store, method, request.params)}
+                            });
                             let result = tokio::select! {
                                 _ = token.cancelled() => Err(error::CANCELLED),
                                 result = timeout(Duration::from_millis(timeout_ms),work) => match result {

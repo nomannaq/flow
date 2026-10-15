@@ -556,7 +556,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(store);
     let path = dir.join("history.sqlite3");
     let old = Connection::open(&path).unwrap();
-    old.execute_batch("DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
+    old.execute_batch("DROP TABLE candidate_checks; DROP TABLE candidates; DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
         .unwrap();
     old.execute(
         "INSERT INTO workspaces VALUES('legacy','/legacy',?1)",

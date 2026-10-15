@@ -64,6 +64,7 @@ class EngineBridgeTest {
             val waiting = withTimeout(15000) { controller.view.first { it.agent.permissions.isNotEmpty() } }
             val permission = waiting.agent.permissions.single()
             assertEquals(listOf("once"), permission.options.map { it.first })
+            assertEquals(setOf("once"), permission.allowOnce)
             controller.agentRequest("permissions.respond", AgentProtocol.permission(waiting.agent.id!!, permission.id, "once"))
             val ready = withTimeout(10000) { controller.view.first { it.agent.status == "ready" } }
             assertEquals("flow-probe-1\n", Files.readString(java.nio.file.Path.of(ready.agent.workspace!!).resolve("probe.txt")))

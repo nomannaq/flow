@@ -21,7 +21,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
+mod candidates;
 mod lifecycle;
 mod maintenance;
 pub use maintenance::StorageReport;
@@ -930,10 +931,16 @@ impl Database {
             if version < 3 {
                 tx.execute_batch(include_str!("schema-3.sql"))?;
             }
+            if version < 4 {
+                tx.execute_batch(include_str!("schema-4.sql"))?;
+            }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             tx.commit()?;
         }
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // A fresh owner never replays a validation command with an unknown
+        // outcome. The next explicit check needs a fresh intent ID.
+        conn.execute("UPDATE candidate_checks SET record=json_set(record,'$.status','interrupted') WHERE json_extract(record,'$.status')='running'", [])?;
         conn.pragma_update(None, "synchronous", "FULL")?;
         // macOS requests F_FULLFSYNC through SQLite's VFS when available.
         conn.pragma_update(None, "fullfsync", "ON")?;
@@ -969,6 +976,7 @@ impl Database {
         Ok(db)
     }
     fn integrity(&self) -> Result<()> {
+        candidates::integrity(&self.conn)?;
         let check: String = self
             .conn
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))?;

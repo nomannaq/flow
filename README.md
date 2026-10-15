@@ -195,6 +195,16 @@ diff requests after restart, and preservation of developer changes. Run instruct
 and the separate, still-required pinned Codex manual gate are in
 [First vertical slice acceptance](docs/first-vertical-slice.md).
 
+### Complete-result review and performance (B18/B27)
+
+Closed sessions can prepare an immutable complete-result candidate in **Review
+result**. Review its baseline/result diffs, explicitly run optional checks in a
+temporary copy, and accept/reject the entire candidate. Changed check output
+requires review of a new hash. These decisions do not apply, stage or commit
+files. The [combined runbook](docs/first-slice-performance-and-review.md) covers
+the opt-in native real-Codex test, repeatable performance fixtures, protocol and
+remaining host acceptance.
+
 ### Bundled native engine (B28)
 
 `buildPlugin` includes the host's release engine, version/protocol manifest and

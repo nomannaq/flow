@@ -202,6 +202,99 @@
       ],
       "type": "object"
     },
+    "CandidateCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "checkId": {
+          "$ref": "#/$defs/MutationKey"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeoutSeconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidateId",
+        "checkId",
+        "command",
+        "timeoutSeconds",
+        "writersStopped"
+      ],
+      "type": "object"
+    },
+    "CandidateDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "accept": {
+          "type": "boolean"
+        },
+        "candidateId": {
+          "type": "string"
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidateId",
+        "accept",
+        "writersStopped"
+      ],
+      "type": "object"
+    },
+    "CandidatePrepare": {
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sessionId",
+        "writersStopped"
+      ],
+      "type": "object"
+    },
+    "CandidateQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidateId": {
+          "type": "string"
+        },
+        "fileIndex": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidateId"
+      ],
+      "type": "object"
+    },
     "DurableEvent": {
       "properties": {
         "cursor": {
@@ -507,6 +600,12 @@
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "candidates.prepare",
+        "candidates.get",
+        "candidates.files",
+        "candidates.diff",
+        "candidates.decide",
+        "candidates.check",
         "history.diff",
         "history.files",
         "history.turns",
@@ -872,6 +971,18 @@
     "cancelParams": {
       "$ref": "#/$defs/CancelParams"
     },
+    "candidateCheck": {
+      "$ref": "#/$defs/CandidateCheck"
+    },
+    "candidateDecision": {
+      "$ref": "#/$defs/CandidateDecision"
+    },
+    "candidatePrepare": {
+      "$ref": "#/$defs/CandidatePrepare"
+    },
+    "candidateQuery": {
+      "$ref": "#/$defs/CandidateQuery"
+    },
     "durableEvent": {
       "$ref": "#/$defs/DurableEvent"
     },
@@ -922,6 +1033,10 @@
     }
   },
   "required": [
+    "candidatePrepare",
+    "candidateQuery",
+    "candidateDecision",
+    "candidateCheck",
     "method",
     "request",
     "notification",

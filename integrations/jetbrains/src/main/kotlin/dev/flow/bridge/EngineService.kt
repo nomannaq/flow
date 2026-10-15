@@ -15,7 +15,15 @@ class EngineService(private val project: Project, internal val scope: CoroutineS
         val directory = Path.of(requireNotNull(root) { "Open a local project first" }).toRealPath()
         val plugin = requireNotNull(PluginManagerCore.getPlugin(PluginId.getId("dev.flow.workbench")))
         val executable = EngineExecutable.resolve(plugin.pluginPath, requireNotNull(plugin.version), System.getProperty("flow.engine.path"))
-        ProcessBuilder(executable.toString(), "--project-root", directory.toString())
+        val command = mutableListOf(executable.toString(), "--project-root", directory.toString())
+        // Explicit development/acceptance storage, shared across IDE restarts.
+        // The engine validates its location and still scopes it to this project.
+        System.getProperty("flow.engine.dataRoot")?.let { value ->
+            val data = Path.of(value)
+            require(data.isAbsolute) { "Acceptance data root must be absolute" }
+            command.addAll(listOf("--data-root", data.toRealPath().toString()))
+        }
+        ProcessBuilder(command)
             .directory(directory.toFile())
             .apply {
                 // Native adapter authentication stays outside Flow storage and logs.

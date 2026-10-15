@@ -11,6 +11,17 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ProtocolTest {
+    @Test
+    fun oneTimePermissionSemanticsDoNotDependOnDisplayLabels() {
+        val input = resource("golden.json").getAsJsonObject("agentView").deepCopy()
+        val option = input.getAsJsonArray("permissions")[0].asJsonObject.getAsJsonArray("options")[0].asJsonObject
+        option.addProperty("name", "Proceed just this time — 日本語")
+        option.addProperty("allowOnce", true)
+        assertEquals(setOf("once"), AgentProtocol.view(input).permissions.single().allowOnce)
+        option.addProperty("name", "Once")
+        option.remove("allowOnce")
+        assertTrue(AgentProtocol.view(input).permissions.single().allowOnce.isEmpty())
+    }
     private fun resource(name: String): JsonObject = javaClass.getResourceAsStream("/$name")!!.bufferedReader().use {
         ProtocolJson.parse(it.readText())
     }

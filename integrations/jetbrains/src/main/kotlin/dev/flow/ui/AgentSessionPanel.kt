@@ -238,6 +238,8 @@ internal class AgentSessionPanel(private val controller: EngineController) : JBP
                 choices.add(
                     JButton(name).apply {
                         putClientProperty("html.disable", true)
+                        putClientProperty("flow.permission.requestId", request.id)
+                        putClientProperty("flow.permission.optionId", id)
                         addActionListener { choose(id) }
                     },
                 )

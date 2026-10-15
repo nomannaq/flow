@@ -182,3 +182,30 @@ that project, then compare its developer files/HEAD/staged entries with the save
 `before.json`. macOS reported Accessibility UI scripting disabled, so no visible
 UI actions or full IDE restart are recorded as having been performed by the
 assistant. This development sandbox does not replace clean-machine installation.
+
+## Combined-branch native update — 2026-10-16
+
+The [opt-in real Swing scenario](first-slice-performance-and-review.md#b12-native-acceptance)
+now passes with the same checksum-pinned adapter and explicit model. It submitted
+both tasks through the actual native controls, verified the two immutable
+read-only diff requests, preserved staged/unstaged/untracked developer work and
+the index, verified writer shutdown, restarted the release engine, deleted the
+owned live probe and reopened identical historical pairs without an agent.
+[Retained native evidence](b12-real-native-evidence.json) records the observed
+result and the remaining host checks. It supersedes the pending Swing-submission
+and dirty-sentinel observations in the earlier engine-only report; that report
+remains an accurate record of its own narrower run.
+
+The first native attempt timed out because the harness used a fixture-specific
+permission label; it now uses only explicit `allowOnce` metadata and exact option
+identity. The next attempt completed both real turns but exposed the historical
+file-page cancellation race. A deterministic native regression failed against
+the original behavior and passed with the fix. Later Linux checks also exercised
+list selection deduplication and publishing request ownership before starting
+coroutine callbacks. Failure scratch data was retained, not declared accepted.
+
+The final diff request is still intercepted by the native test framework. Full
+rendered presentation, full IDE-process restart and project/plugin disposal are
+not asserted by that test; **G1/B12 remain open** for those host observations.
+Use the combined runbook's explicit acceptance data root to review the retained
+real history in the pinned sandbox without another model run.

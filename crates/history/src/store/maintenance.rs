@@ -36,7 +36,7 @@ impl Database {
             [],
             |r| uint(r, 0),
         )?;
-        let unlinked_snapshots = self.conn.query_row("SELECT COUNT(*) FROM snapshots s WHERE NOT EXISTS(SELECT 1 FROM sessions WHERE baseline=s.id) AND NOT EXISTS(SELECT 1 FROM operations WHERE before_id=s.id OR after_id=s.id)", [], |r| uint(r, 0))?;
+        let unlinked_snapshots = self.conn.query_row("SELECT COUNT(*) FROM snapshots s WHERE NOT EXISTS(SELECT 1 FROM sessions WHERE baseline=s.id) AND NOT EXISTS(SELECT 1 FROM operations WHERE before_id=s.id OR after_id=s.id) AND NOT EXISTS(SELECT 1 FROM candidates WHERE baseline_id=s.id OR source_id=s.id OR result_id=s.id)", [], |r| uint(r, 0))?;
         let bytes = storage_bytes(&self.directory)?;
         let reason = self.damage.clone().or_else(|| {
             if self.pending_at_open { Some("Unresolved mutations or history holds require a recovery handler; nothing was replayed".into()) }
@@ -279,7 +279,7 @@ impl HistoryStore {
             if exists { drop(tx); return db.finish_deletions(); }
             let record: Session = load_record(&tx,"SELECT record FROM sessions WHERE id=?1",session.as_str())?;
             if record.workspace_id != workspace || !matches!(record.status.as_str(), "closed" | "archived") { return Err(Error::Invalid("only explicitly closed sessions may be deleted")); }
-            let references: u64 = tx.query_row("SELECT (SELECT COUNT(*) FROM history_holds WHERE session_id=?1)+(SELECT COUNT(*) FROM sessions WHERE workspace_id=?2 AND id<>?1)", params![session.as_str(),workspace.as_str()], |r| uint(r,0))?;
+            let references: u64 = tx.query_row("SELECT (SELECT COUNT(*) FROM history_holds WHERE session_id=?1)+(SELECT COUNT(*) FROM candidates WHERE session_id=?1)+(SELECT COUNT(*) FROM sessions WHERE workspace_id=?2 AND id<>?1)", params![session.as_str(),workspace.as_str()], |r| uint(r,0))?;
             if references != 0 { return Err(Error::Invalid("session has active references or a shared workspace")); }
             // Keep replay sequences intact. Old clients must resnapshot after the
             // store identity rotates; session payloads are explicitly redacted.

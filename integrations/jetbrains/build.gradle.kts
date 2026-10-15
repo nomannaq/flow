@@ -91,6 +91,24 @@ tasks.test {
     systemProperty("flow.test.python", pythonPath)
     systemProperty("flow.test.fakeEngine", rootProject.file("../../tests/fixtures/engine/fake_engine.py").absolutePath)
     systemProperty("flow.test.adapterFixture", rootProject.file("../../scripts/spikes/fixture_agent.py").absolutePath)
+    val realCodex = providers.gradleProperty("flowRealCodex").orNull == "true"
+    if (realCodex) {
+        require(providers.gradleProperty("flowRealAllowOnce").orNull == "true") { "Real Codex acceptance requires -PflowRealAllowOnce=true" }
+        filter.includeTestsMatching("dev.flow.ui.FirstVerticalSliceTest.testOptInRealCodexTwoEdits")
+        systemProperty("flow.test.realAdapter", providers.environmentVariable("FLOW_B12_ADAPTER").get())
+        systemProperty("flow.test.realSha256", providers.environmentVariable("FLOW_B12_ADAPTER_SHA256").get())
+        systemProperty("flow.test.realModel", providers.environmentVariable("FLOW_B12_MODEL").get())
+        systemProperty("flow.test.realAllowOnce", "true")
+        systemProperty("flow.test.realEvidence", layout.buildDirectory.file("b12-real-native-evidence.json").get().asFile.absolutePath)
+        systemProperty("flow.test.engine", layout.buildDirectory.file("native-engine/bin/$nativeTarget/$engineFileName").get().asFile.absolutePath)
+        outputs.upToDateWhen { false } // Real calls occur only on explicit opt-in.
+        doFirst { layout.buildDirectory.file("b12-real-native-evidence.json").get().asFile.delete() }
+    } else {
+        filter.excludeTestsMatching("dev.flow.ui.FirstVerticalSliceTest.testOptInRealCodexTwoEdits")
+    }
+    if (providers.gradleProperty("flowPerformance").orNull == "true") {
+        systemProperty("flow.test.performanceOutput", layout.buildDirectory.file("b27-native").get().asFile.absolutePath)
+    }
 }
 
 intellijPlatform {
@@ -137,6 +155,7 @@ tasks.check {
 
 tasks.runIde {
     dependsOn(buildProtocolTestEngine)
+    providers.gradleProperty("flowAcceptanceDataRoot").orNull?.let { systemProperty("flow.engine.dataRoot", it) }
     if (providers.gradleProperty("flowBundledEngine").orNull != "true") {
         jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/$engineFileName").absolutePath}")
     }

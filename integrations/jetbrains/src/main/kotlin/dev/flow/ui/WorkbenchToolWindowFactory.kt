@@ -38,7 +38,11 @@ class WorkbenchToolWindowFactory :
         val details = JBList<String>()
         val sessions = AgentSessionPanel(controller)
         val tabs = JTabbedPane()
-        val history = SessionHistoryPanel(project, controller, service.scope) { source ->
+        val candidate = CandidateReviewPanel(project, controller, service.scope)
+        val history = SessionHistoryPanel(project, controller, service.scope, reviewSession = { id ->
+            candidate.selectSession(id)
+            tabs.selectedIndex = 2
+        }) { source ->
             sessions.newConversation(source)
             tabs.selectedIndex = 0
         }
@@ -67,6 +71,7 @@ class WorkbenchToolWindowFactory :
                 tabs.apply {
                     addTab("Session", sessions)
                     addTab("History", history)
+                    addTab("Review result", candidate)
                     addTab("Engine", JBScrollPane(details))
                 },
                 BorderLayout.CENTER,
@@ -80,6 +85,7 @@ class WorkbenchToolWindowFactory :
         val disposed = AtomicBoolean()
         content.setDisposer(lifetime)
         Disposer.register(lifetime, history)
+        Disposer.register(lifetime, candidate)
         val observer = service.scope.launch {
             controller.view.collect { view ->
                 withContext(Dispatchers.EDT) {
@@ -87,6 +93,7 @@ class WorkbenchToolWindowFactory :
                         status.text = view.status
                         sessions.update(view)
                         history.update(view)
+                        candidate.update(view)
                         details.setListData(
                             arrayOf(
                                 view.pid?.let { "Engine PID: $it" } ?: "Engine offline",

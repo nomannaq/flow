@@ -547,6 +547,11 @@ Tasks:
 
 #### B12 — `test/first-vertical-slice`
 
+**Combined implementation authorized 2026-10-16:** the user combined B12, B27 and
+B18 on the existing `feat/first-slice-performance` branch. Development and
+measurement proceed together; unobserved B12 native host checks still prevent a
+G1/release acceptance claim. See the [combined runbook](first-slice-performance-and-review.md).
+
 **Milestone:** M1.
 
 **Depends on:** B05, B10, B11, B14, B25. **Scope:** first release-blocking end-to-end scenario.

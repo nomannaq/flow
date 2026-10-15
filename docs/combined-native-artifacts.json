@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "internalSmokeOnly": true,
+  "artifacts": [
+    {
+      "target": "aarch64-apple-darwin",
+      "archive": "flow-jetbrains-0.1.0-aarch64-apple-darwin.zip",
+      "archiveSha256": "572de88106d36411c2dc42391c93b1f6f2051bd003906ac6e1d857535fd47c90",
+      "engineSha256": "41ac1bf3e9d931dc6378b873d41cd12d970b8888cdc6e9c339c4d351927a1041"
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "archive": "flow-jetbrains-0.1.0-x86_64-unknown-linux-gnu.zip",
+      "archiveSha256": "7f10b808bc160f9165e552825e6992c0f2b3945859db656f65b9f67c01804819",
+      "engineSha256": "1e7cf7d313d2f40a822eed70e65264bef148a1c2b0847c8fb433d66551e65e38"
+    }
+  ],
+  "macRustTests": 83,
+  "linuxRustTests": 83,
+  "macKotlinNativeTests": 27,
+  "linuxKotlinNativeTests": 27,
+  "pythonRegressions": 7,
+  "pluginVerifier": "Compatible with IU-253.33813.55; 4 deprecated and 6 experimental API usages",
+  "linuxEnvironment": "Debian 12 x86-64 container emulated on arm64 macOS, Xvfb; file watching disabled for emulation",
+  "remaining": [
+    "B12 rendered presentation/full IDE restart/plugin unload",
+    "Clean-machine installations",
+    "Windows and Intel Mac native execution",
+    "Public signing and distribution",
+    "B19 safe application and B29 release acceptance"
+  ]
+}

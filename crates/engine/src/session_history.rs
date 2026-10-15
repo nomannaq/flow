@@ -163,7 +163,7 @@ fn location(root: &std::path::Path, change: &history::FileChange) -> Value {
 fn decode<T: serde::de::DeserializeOwned>(value: Value) -> history::Result<T> {
     serde_json::from_value(value).map_err(|_| history::Error::Invalid("invalid history query"))
 }
-fn text(
+pub(crate) fn text(
     store: &HistoryStore,
     entry: Option<&FileEntry>,
 ) -> history::Result<(Option<String>, &'static str)> {

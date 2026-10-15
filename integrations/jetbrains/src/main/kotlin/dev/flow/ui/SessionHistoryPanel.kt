@@ -1,5 +1,6 @@
 package dev.flow.ui
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffDialogHints
@@ -25,6 +26,7 @@ import dev.flow.bridge.HistorySelection
 import dev.flow.bridge.optionalText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -56,7 +58,9 @@ internal class SessionHistoryPanel(
     private val project: Project,
     private val controller: EngineController,
     parentScope: CoroutineScope,
+    private val historyRequest: suspend (String, JsonObject) -> JsonElement = controller::historyRequest,
     private val presentDiff: (SimpleDiffRequest) -> Unit = { request -> DiffManager.getInstance().showDiff(project, request, DiffDialogHints.DEFAULT) },
+    private val reviewSession: (String) -> Unit = {},
     private val newConversation: (String) -> Unit,
 ) : JBPanel<SessionHistoryPanel>(BorderLayout()),
     Disposable {
@@ -99,6 +103,7 @@ internal class SessionHistoryPanel(
     private val moreFiles = JButton("Next files")
     private val archive = JButton("Archive")
     private val continueSession = JButton("New conversation…")
+    private val reviewResult = JButton("Review complete result")
     private val diff = JButton("Open historical diff")
     private val currentFile = JButton("Open CURRENT workspace file")
     private var sessionCursor: String? = null
@@ -108,6 +113,10 @@ internal class SessionHistoryPanel(
     private var connected = false
     private var rendering = false
     private var task: Job? = null
+    private var fileAction = false
+    private var selectedSessionId: String? = null
+    private var selectedTurnId: String? = null
+    private var selectedOperationId: String? = null
 
     init {
         fun section(title: String, component: JComponent, vararg controls: JButton) = JPanel(BorderLayout()).apply {
@@ -117,7 +126,7 @@ internal class SessionHistoryPanel(
         }
         add(
             JPanel(GridLayout(4, 1, 0, 6)).apply {
-                add(section("Sessions", sessions, refresh, moreSessions, archive, continueSession))
+                add(section("Sessions", sessions, refresh, moreSessions, archive, continueSession, reviewResult))
                 add(section("Turns (creation order)", turns, firstTurns, moreTurns, allOperations))
                 add(section("Operations (observation order)", operations, firstOperations, moreOperations))
                 add(section("Recorded files — folders group this page", files, firstFiles, moreFiles, diff, currentFile))
@@ -137,6 +146,7 @@ internal class SessionHistoryPanel(
         moreTurns.addActionListener { turnCursor?.let(::loadTurns) }
         allOperations.addActionListener {
             rendering = true
+            selectedTurnId = null
             turns.clearSelection()
             rendering = false
             loadOperations(null)
@@ -145,23 +155,44 @@ internal class SessionHistoryPanel(
         moreOperations.addActionListener { operationCursor?.let(::loadOperations) }
         firstFiles.addActionListener { loadFiles(null) }
         moreFiles.addActionListener { fileCursor?.let(::loadFiles) }
-        sessions.addListSelectionListener { if (!rendering && !it.valueIsAdjusting) loadTurns(null) }
-        turns.addListSelectionListener { if (!rendering && !it.valueIsAdjusting) loadOperations(null) }
-        operations.addListSelectionListener { if (!rendering && !it.valueIsAdjusting) loadFiles(null) }
+        sessions.addListSelectionListener {
+            val id = sessions.selectedValue?.value?.get("id")?.asString
+            if (!rendering && !it.valueIsAdjusting && id != selectedSessionId) {
+                selectedSessionId = id
+                loadTurns(null)
+            }
+        }
+        turns.addListSelectionListener {
+            val id = turns.selectedValue?.value?.get("id")?.asString
+            if (!rendering && !it.valueIsAdjusting && id != selectedTurnId) {
+                selectedTurnId = id
+                loadOperations(null)
+            }
+        }
+        operations.addListSelectionListener {
+            val id = operations.selectedValue?.value?.get("id")?.asString
+            if (!rendering && !it.valueIsAdjusting && id != selectedOperationId) {
+                selectedOperationId = id
+                loadFiles(null)
+            }
+        }
         files.addTreeSelectionListener {
             if (!rendering) {
-                task?.cancel()
+                // Model replacement can deliver selection clearing after the
+                // rendering guard ends. It must not cancel a pending page load.
+                if (fileAction) task?.cancel()
                 buttons()
             }
         }
         archive.addActionListener {
             val selected = sessions.selectedValue ?: return@addActionListener
             runRequest {
-                controller.historyRequest("sessions.archive", AgentProtocol.command(selected.value["id"].asString))
+                historyRequest("sessions.archive", AgentProtocol.command(selected.value["id"].asString))
                 loadSessions(null)
             }
         }
         continueSession.addActionListener { sessions.selectedValue?.let { newConversation(it.value["id"].asString) } }
+        reviewResult.addActionListener { sessions.selectedValue?.let { reviewSession(it.value["id"].asString) } }
         diff.addActionListener { openDiff() }
         currentFile.addActionListener { openCurrentFile() }
         files.inputMap.put(KeyStroke.getKeyStroke("ENTER"), "flow.openHistory")
@@ -182,18 +213,21 @@ internal class SessionHistoryPanel(
         coverage.accessibleContext.accessibleName = "Capture coverage warnings"
         buttons()
     }
-    private fun runRequest(block: suspend () -> Unit) {
+    private fun runRequest(fileAction: Boolean = false, block: suspend () -> Unit) {
         task?.cancel()
-        task = scope.launch {
+        this.fileAction = fileAction
+        task = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 message.text = "Loading…"
                 block()
             } catch (cancelled: CancellationException) {
+                if (task == coroutineContext[Job]) message.text = "Selection changed. Choose a recorded item to continue."
                 throw cancelled
             } catch (_: Exception) {
                 message.text = "History unavailable, content missing/corrupt, or selection changed. No live content was substituted. Refresh and retry; close/recover sessions before archiving."
             }
         }
+        task!!.start() // Publish ownership before callbacks can start nested requests.
     }
     private fun params(after: String? = null) = JsonObject().apply {
         sessions.selectedValue?.let { addProperty("sessionId", it.value["id"].asString) }
@@ -209,6 +243,11 @@ internal class SessionHistoryPanel(
     private fun replaceRows(list: JBList<Row>, rows: Array<Row>) {
         rendering = true
         try {
+            when (list) {
+                sessions -> selectedSessionId = null
+                turns -> selectedTurnId = null
+                operations -> selectedOperationId = null
+            }
             list.setListData(rows)
         } finally {
             rendering = false
@@ -255,7 +294,7 @@ internal class SessionHistoryPanel(
         coverage.text = ""
         buttons()
         runRequest {
-            val page = controller.historyRequest("sessions.list", JsonObject().apply { after?.let { addProperty("after", it) } }).asJsonObject
+            val page = historyRequest("sessions.list", JsonObject().apply { after?.let { addProperty("after", it) } }).asJsonObject
             sessionCursor = page.optionalText("next")
             replaceRows(sessions, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString}" })
             message.text = "Select a session. History never resumes an agent. Next replaces this page; Refresh returns to the first page."
@@ -272,7 +311,7 @@ internal class SessionHistoryPanel(
         if (!connected || sessions.selectedValue == null) return
         val query = params(after)
         runRequest {
-            val page = controller.historyRequest("history.turns", query).asJsonObject
+            val page = historyRequest("history.turns", query).asJsonObject
             turnCursor = page.optionalText("next")
             gap(page)
             replaceRows(turns, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString}" })
@@ -287,7 +326,7 @@ internal class SessionHistoryPanel(
         if (!connected || sessions.selectedValue == null) return
         val query = params(after)
         runRequest {
-            val page = controller.historyRequest("history.operations", query).asJsonObject
+            val page = historyRequest("history.operations", query).asJsonObject
             operationCursor = page.optionalText("next")
             gap(page)
             replaceRows(
@@ -309,7 +348,7 @@ internal class SessionHistoryPanel(
         if (!connected) return
         val query = params(after)
         runRequest {
-            val page = controller.historyRequest("history.files", query).asJsonObject
+            val page = historyRequest("history.files", query).asJsonObject
             fileCursor = page.optionalText("next")
             replaceFiles(
                 rows(page) {
@@ -333,8 +372,9 @@ internal class SessionHistoryPanel(
     private fun openDiff() {
         if (!connected) return
         val selected = selection() ?: return
-        runRequest {
-            val result = controller.historyRequest("history.diff", selected.query()).asJsonObject
+        runRequest(fileAction = true) {
+            val result = historyRequest("history.diff", selected.query()).asJsonObject
+            if (selection() != selected) return@runRequest
             val spec = selected.diff(result)
             message.text = "${result["beforeNote"].asString}; ${result["afterNote"].asString}. Modes: ${result.optionalText("beforeMode") ?: "absent"} → ${result.optionalText("afterMode") ?: "absent"}"
             if (spec != null) {
@@ -351,8 +391,9 @@ internal class SessionHistoryPanel(
     private fun openCurrentFile() {
         if (!connected) return
         val selected = selection() ?: return
-        runRequest {
-            val result = controller.historyRequest("history.location", selected.query()).asJsonObject
+        runRequest(fileAction = true) {
+            val result = historyRequest("history.location", selected.query()).asJsonObject
+            if (selection() != selected) return@runRequest
             message.text = result["note"].asString
             val path = result.optionalText("path") ?: return@runRequest
             val file = withContext(Dispatchers.IO) {
@@ -383,6 +424,7 @@ internal class SessionHistoryPanel(
         firstFiles.isEnabled = operation
         moreFiles.isEnabled = operation && fileCursor != null
         archive.isEnabled = session && sessions.selectedValue?.value?.get("status")?.asString == "closed"
+        reviewResult.isEnabled = session && sessions.selectedValue?.value?.get("status")?.asString == "closed"
         continueSession.isEnabled = session && sessions.selectedValue?.value?.get("status")?.asString in listOf("closed", "archived")
         diff.isEnabled = operation && selectedFile() != null
         currentFile.isEnabled = diff.isEnabled

@@ -266,19 +266,23 @@ All 26 Kotlin/native tests passed without skips. Plugin Verifier reports
 compatibility with four deprecated and six experimental API usages. Local reports
 are retained under `build/native-acceptance-linux/`.
 
-The current Mac archive is
+The Mac archive recorded for the 2026-10-15 platform-expansion checks was
 `build/distributions/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip` with SHA-256
 `05028e583c5193689044b642b9307495c2114ce00d27d51f8b6eb5896c2e94f2`.
 Its engine SHA-256 is
 `accbeaaaa741e39020f75820be178eba4c20b72ac1e0182151b5c0b84a57bdf3`.
 These identify this local build only. B12's real-Codex acceptance stays open.
 
-The Linux archive is
+The Linux archive recorded for those checks was
 `build/distributions/flow-jetbrains-0.1.0-x86_64-unknown-linux-gnu.zip` with SHA-256
 `e2f8f50f9b36e98ed55919cc244d1f75c272b1c9ab9a281ddee18a45dd48240e`.
 Its engine SHA-256 is
 `d8ab8b16325b05afa36641bfa3e035121b84a439e70a6c363e7392ea7e34495d`.
 It is unsigned and remains an internal smoke artifact pending host installation.
+
+Later B12/B27/B18 builds replace these files with the same versioned filenames.
+See the [combined runbook](first-slice-performance-and-review.md) for current
+validation and artifact hashes; the digests above identify the earlier builds.
 
 ## Historical Apple Silicon B28 validation — 2026-10-15
 

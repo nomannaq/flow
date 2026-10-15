@@ -7,6 +7,7 @@
 pub mod agents;
 pub mod maintenance;
 pub mod recorder;
+pub mod review;
 pub mod worktrees;
 
 #[cfg(all(test, unix))]

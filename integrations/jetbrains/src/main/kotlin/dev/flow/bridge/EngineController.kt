@@ -175,7 +175,7 @@ internal class EngineController(
     }
 
     suspend fun historyRequest(method: String, params: JsonObject = JsonObject()): JsonElement {
-        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff"))
+        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff", "candidates.prepare", "candidates.get", "candidates.files", "candidates.diff", "candidates.decide", "candidates.check"))
         val reply = CompletableDeferred<JsonElement>()
         check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
         return reply.await()

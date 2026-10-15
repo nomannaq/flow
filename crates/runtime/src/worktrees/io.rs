@@ -170,7 +170,7 @@ impl Drop for Lease {
 
 /// No shell, inherited Git variables, hooks, network or external diff driver.
 /// Repository filter commands are rejected before checkout by validate().
-pub(super) fn git<I, S>(root: &Path, args: I) -> Result<Vec<u8>>
+pub(crate) fn git<I, S>(root: &Path, args: I) -> Result<Vec<u8>>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,

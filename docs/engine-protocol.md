@@ -7,6 +7,11 @@ subprocess bridge are implemented in B06; B03 supplies its contract and correlat
 
 ## Wire profile
 
+The additive B18 `candidates.prepare/get/files/diff/decide/check` methods use this
+same v1 envelope and bounds. Their parameters and whole-result semantics are
+documented in the [combined runbook](first-slice-performance-and-review.md#protocol)
+and generated contract schema. A candidate decision is not an apply receipt.
+
 Flow uses [JSON-RPC 2.0](https://www.jsonrpc.org/specification) objects, one compact
 UTF-8 JSON object per line. LF and CRLF are accepted. JSON string newlines must be
 escaped. A complete final object without LF is accepted at EOF; incomplete JSON

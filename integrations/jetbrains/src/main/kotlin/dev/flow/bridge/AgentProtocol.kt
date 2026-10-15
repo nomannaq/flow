@@ -4,7 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import java.nio.file.Path
 
-internal data class AgentPermission(val id: String, val title: String, val tool: String, val options: List<Pair<String, String>>)
+internal data class AgentPermission(val id: String, val title: String, val tool: String, val options: List<Pair<String, String>>, val allowOnce: Set<String> = emptySet())
 internal data class AgentView(
     val id: String? = null,
     val status: String = "No active session",
@@ -45,6 +45,7 @@ internal object AgentProtocol {
                     permission["title"].asString,
                     permission["toolCallId"].asString,
                     options.map { it.asJsonObject.let { option -> option["id"].asString to option["name"].asString } },
+                    options.map { it.asJsonObject }.filter { it["allowOnce"]?.asBoolean == true }.map { it["id"].asString }.toSet(),
                 )
             },
             value.getAsJsonArray("authMethods")?.map { it.asString.also { id -> require(id.length <= 256) } }?.also { require(it.size <= 32) }.orEmpty(),

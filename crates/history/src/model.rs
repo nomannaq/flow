@@ -91,6 +91,27 @@ pub struct Snapshot {
     pub id: ContentId,
     pub manifest: Manifest,
 }
+
+/// Identity includes source generation as well as immutable bytes: new turns
+/// invalidate an earlier approval even when the final file contents match.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Candidate {
+    pub session_id: SessionId,
+    pub baseline: ContentId,
+    pub source: ContentId,
+    pub result: ContentId,
+    pub generation: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateReview {
+    pub id: ContentId,
+    pub candidate: Candidate,
+    pub decision: String,
+    pub checks: Vec<serde_json::Value>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
