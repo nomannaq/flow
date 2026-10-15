@@ -9,6 +9,21 @@ pub use model::*;
 pub use recorder::{Observation, Recorder};
 pub use store::{HistoryStore, StorageReport};
 
+/// Concurrent Unix fork/exec briefly inherits CLOEXEC lock descriptors. Allow
+/// at most 100 ms for exec; a persistent competing writer remains rejected.
+pub fn try_lock_file(file: &std::fs::File) -> std::result::Result<(), std::fs::TryLockError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     Io(std::io::Error),

@@ -61,28 +61,88 @@ pub(crate) fn released_process(workspace: &history::Workspace) -> Result<()> {
     if record.engine_pid != std::process::id() {
         return Err(Error::Invalid("process belongs to another engine"));
     }
-    let pid = record
-        .adapter_pid
-        .and_then(|p| i32::try_from(p).ok())
-        .and_then(rustix::process::Pid::from_raw)
-        .ok_or(Error::Invalid("adapter launch outcome unknown"))?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-    loop {
-        match rustix::process::test_kill_process_group(pid) {
-            Err(rustix::io::Errno::SRCH) => break,
-            Ok(()) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(std::time::Duration::from_millis(25))
-            }
-            other => {
-                tracing::warn!(result = ?other, "adapter group shutdown check failed");
-                return Err(Error::Invalid("adapter process group shutdown unverified"));
+    #[cfg(unix)]
+    {
+        let pid = record
+            .adapter_pid
+            .and_then(|p| i32::try_from(p).ok())
+            .and_then(rustix::process::Pid::from_raw)
+            .ok_or(Error::Invalid("adapter launch outcome unknown"))?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            match rustix::process::test_kill_process_group(pid) {
+                Err(rustix::io::Errno::SRCH) => break,
+                Ok(()) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(25))
+                }
+                other => {
+                    tracing::warn!(result = ?other, "adapter group shutdown check failed");
+                    return Err(Error::Invalid("adapter process group shutdown unverified"));
+                }
             }
         }
     }
+    #[cfg(windows)]
+    verify_windows_launcher_exited(
+        record
+            .adapter_pid
+            .ok_or(Error::Invalid("adapter launch outcome unknown"))?,
+    )?;
     // Group exit does not prove escaped/background writers absent; retained
     // workspace continuation still requires an explicit stopped-writer assertion.
     record.state = "sdk_group_exited_external_writers_unverified".into();
     write(&path, &record)
+}
+
+#[cfg(windows)]
+fn verify_windows_launcher_exited(pid: u32) -> Result<()> {
+    use std::{
+        fs::File,
+        io::{Read, Seek},
+        process::{Command, Stdio},
+        time::{Duration, Instant},
+    };
+    // Read-only liveness probe: never kill/adopt a PID from the journal. Job
+    // kill-on-close handles descendants; an uncertain probe preserves leases.
+    let system = std::env::var_os("SYSTEMROOT")
+        .ok_or(Error::Invalid("Windows system directory unavailable"))?;
+    let tasklist = std::path::PathBuf::from(system).join("System32/tasklist.exe");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let mut output: File = tempfile::tempfile()?;
+        use std::os::windows::process::CommandExt;
+        let mut child = Command::new(&tasklist)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .args(["/FO", "CSV", "/NH", "/FI", &format!("PID eq {pid}")])
+            .stdin(Stdio::null())
+            .stdout(output.try_clone()?)
+            .stderr(Stdio::null())
+            .spawn()?;
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::Invalid("adapter job shutdown unverified"));
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        output.rewind()?;
+        let mut bytes = Vec::new();
+        output.take(64 * 1024).read_to_end(&mut bytes)?;
+        if !status.success() {
+            return Err(Error::Invalid("adapter job shutdown unverified"));
+        }
+        if !String::from_utf8_lossy(&bytes).contains(&format!(",\"{pid}\",")) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(Error::Invalid("adapter job shutdown unverified"));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 /// Startup/offline inspection uses actual immutable manifests, current worktree
@@ -287,7 +347,7 @@ pub fn delete_session(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;
 
 /// Caller holds the project writer lease. A new local/upstream session gets the

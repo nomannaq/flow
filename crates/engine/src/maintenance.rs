@@ -65,7 +65,6 @@ pub fn run(args: Vec<OsString>) -> Result<(), Box<dyn std::error::Error + Send +
         Some(data) => history::HistoryStore::open(&project, &data)?,
         None => history::HistoryStore::open_default(&project)?,
     };
-    #[cfg(unix)]
     let recovery = owner.map_or(
         runtime::worktrees::Recovery::RefuseStale,
         runtime::worktrees::Recovery::Acknowledge,
@@ -73,7 +72,6 @@ pub fn run(args: Vec<OsString>) -> Result<(), Box<dyn std::error::Error + Send +
     match action.as_str() {
         "budget" => store.set_storage_budget(budget.ok_or("--bytes is required")?)?,
         "finish-retention" => store.finish_retention()?,
-        #[cfg(unix)]
         "recover" | "delete-session" => {
             let session = session.ok_or("--session is required")?;
             let result = if action == "recover" {
@@ -93,10 +91,7 @@ pub fn run(args: Vec<OsString>) -> Result<(), Box<dyn std::error::Error + Send +
         "inspect" => {}
         _ => return Err("workspace maintenance is unsupported on this platform".into()),
     }
-    #[cfg(unix)]
     let report = runtime::maintenance::inspect(&store)?;
-    #[cfg(not(unix))]
-    let report = serde_json::to_value(store.storage_report()?)?;
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }

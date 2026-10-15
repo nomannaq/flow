@@ -1,14 +1,26 @@
 use super::{Error, Result};
 use serde::{Serialize, de::DeserializeOwned};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::{
     ffi::OsStr,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::Path,
     process::{Child, Command, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+pub(super) fn sync_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    File::open(path)?.sync_all()?;
+    // Windows directory entries use NTFS journaling; see native packaging guide.
+    #[cfg(windows)]
+    if !fs::symlink_metadata(path)?.is_dir() {
+        return Err(Error::Invalid("owned directory was replaced"));
+    }
+    Ok(())
+}
 
 pub(crate) fn now() -> Result<u64> {
     Ok(SystemTime::now()
@@ -30,22 +42,31 @@ pub(super) fn directory(path: &Path) -> Result<()> {
     if !fs::symlink_metadata(path)?.is_dir() {
         return Err(Error::Invalid("owned directory was replaced"));
     }
+    #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    File::open(path.parent().ok_or(Error::Invalid("missing parent"))?)?.sync_all()?;
+    sync_dir(path.parent().ok_or(Error::Invalid("missing parent"))?)?;
     Ok(())
 }
 pub(super) fn regular(path: &Path) -> Result<File> {
     let meta = fs::symlink_metadata(path)?;
-    if !meta.is_file() || meta.nlink() != 1 {
+    let file = File::open(path)?;
+    #[cfg(unix)]
+    let links = meta.nlink();
+    #[cfg(windows)]
+    let links = winapi_util::file::information(&file)?.number_of_links();
+    if !meta.is_file() || meta.file_type().is_symlink() || links != 1 {
         return Err(Error::Invalid(
             "ownership file must be a regular file with one link",
         ));
     }
-    Ok(File::open(path)?)
+    Ok(file)
 }
 pub(crate) fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
+    decode(regular(path)?)
+}
+fn decode<T: DeserializeOwned>(source: impl Read) -> Result<T> {
     let mut bytes = Vec::new();
-    regular(path)?.take(64 * 1024 + 1).read_to_end(&mut bytes)?;
+    source.take(64 * 1024 + 1).read_to_end(&mut bytes)?;
     if bytes.len() > 64 * 1024 {
         return Err(Error::Invalid("ownership metadata exceeds limit"));
     }
@@ -62,7 +83,7 @@ pub(crate) fn write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
         .map_err(|_| Error::Invalid("cannot encode ownership"))?;
     temp.as_file().sync_all()?;
     temp.persist(path).map_err(|e| Error::Io(e.error))?;
-    File::open(parent)?.sync_all()?;
+    sync_dir(parent)?;
     Ok(())
 }
 
@@ -106,20 +127,20 @@ impl Lease {
         if path.symlink_metadata().is_ok() {
             regular(path)?;
         }
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(path)?;
-        file.try_lock().map_err(|e| match e {
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options.open(path)?;
+        history::try_lock_file(&file).map_err(|error| match error {
             std::fs::TryLockError::WouldBlock => Error::Busy,
-            std::fs::TryLockError::Error(e) => Error::Io(e),
+            std::fs::TryLockError::Error(error) => Error::Io(error),
         })?;
         // A failed/stale acquisition must NOT clear the previous owner's metadata.
         if file.metadata()?.len() != 0 {
-            let owner: Owner = read(path)?;
+            // Windows locks are mandatory: a second handle cannot read our
+            // exclusively locked bytes. Inspect through the owning handle.
+            let owner: Owner = decode(&mut file)?;
             if !matches!(recovery, Recovery::Acknowledge(expected) if *expected == owner.instance) {
                 return Err(Error::StaleOwner(owner));
             }
@@ -129,7 +150,7 @@ impl Lease {
         serde_json::to_writer(&mut file, &owner)
             .map_err(|_| Error::Invalid("cannot encode lease"))?;
         file.sync_all()?;
-        File::open(path.parent().ok_or(Error::Invalid("missing parent"))?)?.sync_all()?;
+        sync_dir(path.parent().ok_or(Error::Invalid("missing parent"))?)?;
         Ok(Self {
             file,
             owner,
@@ -176,11 +197,21 @@ where
         stdin.write_all(bytes)?;
         stdin.rewind()?;
     }
+    let mut command = Command::new("git");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     let mut child = GitChild(
-        Command::new("/usr/bin/git")
+        command
             .args([
                 "-c",
-                "core.hooksPath=/dev/null",
+                if cfg!(windows) {
+                    "core.hooksPath=NUL"
+                } else {
+                    "core.hooksPath=/dev/null"
+                },
                 "-c",
                 "core.fsmonitor=false",
                 "-c",
@@ -199,10 +230,17 @@ where
             .args(args)
             .current_dir(root)
             .env_clear()
-            .env("PATH", "/usr/bin:/bin")
+            .envs(
+                ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"]
+                    .iter()
+                    .filter_map(|name| std::env::var_os(name).map(|value| (*name, value))),
+            )
             .env("LC_ALL", "C")
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
             .stdin(stdin)
@@ -237,4 +275,25 @@ pub(super) fn text(bytes: Vec<u8>) -> Result<String> {
     let text = String::from_utf8(bytes)
         .map_err(|_| Error::Invalid("non-UTF-8 Git paths are unsupported"))?;
     Ok(text.strip_suffix('\n').unwrap_or(&text).to_owned())
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn stale_lease_is_read_through_its_locked_handle_and_requires_the_exact_owner() {
+    let scratch = tempfile::tempdir().unwrap();
+    let path = scratch.path().join("writer.lock");
+    let lease = Lease::acquire(&path, &Recovery::RefuseStale).unwrap();
+    let owner = lease.owner.instance.clone();
+    lease.preserve_owner();
+    drop(lease);
+    assert!(matches!(
+        Lease::acquire(&path, &Recovery::RefuseStale),
+        Err(Error::StaleOwner(_))
+    ));
+    assert!(matches!(
+        Lease::acquire(&path, &Recovery::Acknowledge("wrong".into())),
+        Err(Error::StaleOwner(_))
+    ));
+    drop(Lease::acquire(&path, &Recovery::Acknowledge(owner)).unwrap());
+    assert!(Lease::acquire(&path, &Recovery::RefuseStale).is_ok());
 }

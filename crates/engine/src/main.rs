@@ -5,9 +5,8 @@ mod rpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    #[cfg(unix)]
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agent-launch")) {
-        let _ = runtime::agents::launch(std::env::args_os().skip(2));
+        let _ = runtime::agents::launch(std::env::args_os().skip(2)).await;
         eprintln!("Flow adapter launcher failed");
         std::process::exit(1);
     }
@@ -54,7 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         // further writes; the engine must still offer inspection.
                         let _ = recovery.interrupt_agent_sessions();
                     }
-                    #[cfg(unix)]
                     match runtime::maintenance::inspect(&recovery) {
                         Ok(report) => {
                             let needs_review = report["sessions"].as_array().is_some_and(|sessions| sessions.iter().any(|s| s["status"] != "closed" || s["worktree"] != "matches_checkpoint"));
