@@ -68,8 +68,53 @@ class EngineBridgeTest {
             val ready = withTimeout(10000) { controller.view.first { it.agent.status == "ready" } }
             assertEquals("flow-probe-1\n", Files.readString(java.nio.file.Path.of(ready.agent.workspace!!).resolve("probe.txt")))
             assertFalse(Files.exists(project.resolve("probe.txt")))
+            val historyParams = AgentProtocol.command(ready.agent.id!!)
+            val turns = controller.historyRequest("history.turns", historyParams).asJsonObject.getAsJsonArray("items")
+            assertTrue(turns.size() > 0)
+            val observations = controller.historyRequest("history.operations", historyParams).asJsonObject.getAsJsonArray("items")
+            var chosen: HistorySelection? = null
+            for (observation in observations) {
+                val operation = observation.asJsonObject["id"].asString
+                val query = AgentProtocol.command(ready.agent.id).apply { addProperty("operationId", operation) }
+                val files = controller.historyRequest("history.files", query).asJsonObject.getAsJsonArray("items")
+                files.firstOrNull { it.asJsonObject.optionalText("newPath") == "probe.txt" }?.let {
+                    chosen = HistorySelection.from(ready.agent.id, operation, it.asJsonObject)
+                    val filtered = controller.historyRequest("history.operations", historyParams.deepCopy().apply { addProperty("turnId", observation.asJsonObject["turnId"].asString) }).asJsonObject.getAsJsonArray("items")
+                    assertTrue(filtered.any { row -> row.asJsonObject["id"].asString == operation })
+                }
+            }
+            val selected = requireNotNull(chosen)
+            val historical = controller.historyRequest("history.diff", selected.query()).asJsonObject
+            assertEquals("flow-probe-1\n", selected.diff(historical)!!.after)
+            val location = controller.historyRequest("history.location", selected.query()).asJsonObject
+            assertTrue(location["note"].asString.contains("CURRENT"))
             controller.agentRequest("sessions.close", AgentProtocol.command(ready.agent.id!!))
-            withTimeout(10000) { controller.view.first { it.agent.status == "closed" } }
+            val closed = withTimeout(10000) { controller.view.first { it.agent.status in listOf("closed", "failed") } }
+            val retained = controller.historyRequest("sessions.list").asJsonObject.getAsJsonArray("items")
+            assertEquals(ready.agent.id, retained.single().asJsonObject["id"].asString)
+            if (closed.agent.status == "closed") {
+                controller.historyRequest("sessions.archive", AgentProtocol.command(ready.agent.id))
+                controller.historyRequest("sessions.archive", AgentProtocol.command(ready.agent.id))
+                assertEquals("archived", controller.historyRequest("sessions.list").asJsonObject.getAsJsonArray("items").single().asJsonObject["status"].asString)
+            } else {
+                // A sandbox may deny process-group inspection. The strict path
+                // retains an owner record and rejects archive; it is not success.
+                assertTrue(Files.size(project.resolve(".git/flow-worktrees.lock")) > 0)
+                try {
+                    controller.historyRequest("sessions.archive", AgentProtocol.command(ready.agent.id))
+                    error("Unknown shutdown must not be archived")
+                } catch (expected: EngineRpcException) {
+                    assertEquals(-32602, expected.code)
+                }
+            }
+            Files.delete(java.nio.file.Path.of(ready.agent.workspace).resolve("probe.txt"))
+            assertTrue(controller.historyRequest("history.location", selected.query()).asJsonObject["path"].isJsonNull)
+            val previousPid = controller.view.value.pid
+            controller.restart()
+            withTimeout(10000) { controller.view.first { it.connected && it.pid != previousPid } }
+            val reopened = controller.historyRequest("history.diff", selected.query()).asJsonObject
+            assertEquals(historical, reopened)
+            assertEquals(selected.diff(historical), selected.diff(reopened))
         } finally {
             scope.cancel()
             withTimeout(15000) { scope.coroutineContext[kotlinx.coroutines.Job]!!.join() }
@@ -107,6 +152,18 @@ class EngineBridgeTest {
         }
         assertTrue(badArguments.message!!.contains("JSON array"))
         assertFalse(badArguments.message!!.contains("secret"))
+    }
+
+    @Test
+    fun retainedConversationRequiresExplicitStoppedWriterConfirmation() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/adapter", "[]", "", "task", "", "session-old")
+        }
+        val command = AgentProtocol.start("/adapter", "[]", "", "new task", "", "session-old", true)
+        assertEquals("session-old", command["sourceSessionId"].asString)
+        assertEquals("", command["commit"].asString)
+        assertTrue(command["writersStopped"].asBoolean)
+        assertFalse(command.has("upstreamSessionId"))
     }
 
     @Test
@@ -149,7 +206,7 @@ class EngineBridgeTest {
                 repeat(10) { controller.start() }
                 controller.health()
             }
-            withTimeout(10000) { controllers.forEach { it.view.first { view -> view.health.contains("healthy") } } }
+            withTimeout(10000) { controllers.forEach { it.view.first { view -> view.health.contains("responding") } } }
             assertEquals(2, processes.size)
             assertNotEquals(controllers[0].view.value.pid, controllers[1].view.value.pid)
             val old = controllers[0].view.value.pid
@@ -160,7 +217,7 @@ class EngineBridgeTest {
             val crashed = controllers[0].view.value.pid
             processes.first { it.pid() == crashed }.destroyForcibly()
             withTimeout(10000) { controllers[0].view.first { it.connected && it.pid != crashed } }
-            assertFalse(controllers[0].view.value.health.contains("healthy"))
+            assertFalse(controllers[0].view.value.health.contains("responding"))
             scopes[0].cancel()
             scopes[0].coroutineContext[kotlinx.coroutines.Job]!!.join()
             assertTrue(processes.first { it.pid() == controllers[1].view.value.pid }.isAlive)
@@ -239,7 +296,7 @@ class EngineBridgeTest {
             assertEquals(4, processes.size)
             assertTrue(processes.none { it.isAlive })
             assertFalse(controller.view.value.connected)
-            assertFalse(controller.view.value.health.contains("healthy"))
+            assertFalse(controller.view.value.health.contains("responding"))
         } finally {
             scope.cancel()
             scope.coroutineContext[kotlinx.coroutines.Job]!!.join()

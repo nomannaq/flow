@@ -3,6 +3,7 @@ package dev.flow.bridge
 import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,6 +13,73 @@ import java.util.concurrent.TimeUnit
 class ProtocolTest {
     private fun resource(name: String): JsonObject = javaClass.getResourceAsStream("/$name")!!.bufferedReader().use {
         ProtocolJson.parse(it.readText())
+    }
+
+    @Test
+    fun historicalDiffIdentityRejectsWrongContentAndKeepsAbsentSidesDistinct() {
+        val file = ProtocolJson.parse("""{"index":0,"oldPath":"old.txt","newPath":"new.txt","contentIds":{"before":"${"a".repeat(64)}","after":"${"b".repeat(64)}"}}""")
+        val selection = HistorySelection.from("session", "operation", file)
+        val result = file.deepCopy().apply {
+            addProperty("sessionId", "session")
+            addProperty("operationId", "operation")
+            addProperty("fileIndex", 0)
+            addProperty("before", "one\r\n")
+            addProperty("after", "two\n")
+        }
+        val spec = selection.diff(result)!!
+        assertEquals("one\r\n", spec.before)
+        assertTrue(spec.identity.contains("a".repeat(64)))
+        assertTrue(spec.beforeTitle.contains("old.txt"))
+        assertTrue(spec.afterTitle.contains("new.txt"))
+        assertEquals(file["contentIds"], selection.query()["contentIds"])
+        val wrong = result.deepCopy().apply { getAsJsonObject("contentIds").addProperty("after", "c".repeat(64)) }
+        assertThrows(IllegalArgumentException::class.java) { selection.diff(wrong) }
+        val stale = result.deepCopy().apply { addProperty("operationId", "other") }
+        assertThrows(IllegalArgumentException::class.java) { selection.diff(stale) }
+        result.add("after", com.google.gson.JsonNull.INSTANCE)
+        assertNull(selection.diff(result)) // Unsupported content is not an empty/deleted file.
+        result.addProperty("after", "")
+        assertEquals("", selection.diff(result)!!.after)
+    }
+
+    @Test
+    fun codexModelOverrideIsOneArgumentAndViewRendersJoinedMessages() {
+        val request = AgentProtocol.start("/tmp/codex-acp", "[]", "a".repeat(40), "hello", "", model = "test-model")
+        assertEquals(listOf("-c", "model=\"test-model\""), request.getAsJsonArray("arguments").map { it.asString })
+        assertThrows(IllegalArgumentException::class.java) {
+            AgentProtocol.start("/tmp/codex-acp", "[]", "a".repeat(40), "hello", "", model = "bad\nvalue")
+        }
+        val value = resource("golden.json")["agentView"].asJsonObject
+        value.addProperty("recordedOperations", 3)
+        value.addProperty("compatibility", "Unverified adapter")
+        value.add(
+            "activity",
+            com.google.gson.JsonArray().apply {
+                add(
+                    JsonObject().apply {
+                        addProperty("kind", "message.delta")
+                        addProperty("text", "Hello world")
+                    },
+                )
+            },
+        )
+        val view = AgentProtocol.view(value)
+        assertEquals(listOf("Hello world"), view.activity)
+        assertEquals(3L, view.recordedOperations)
+        assertEquals("Unverified adapter", view.compatibility)
+    }
+
+    @Test
+    fun historyDamageIsVisibleWithoutChangingRecordedCounts() {
+        val snapshot = resource("golden.json")["stateSnapshot"].asJsonObject
+        snapshot["state"].asJsonObject.add(
+            "history",
+            ProtocolJson.parse("""{"bytes":1000,"budgetBytes":2000,"writable":false,"reason":"history content failed verification"}"""),
+        )
+        val value = ProtocolJson.snapshot(snapshot)
+        assertEquals(2L, value.sessions)
+        assertTrue(value.historyStatus.contains("1000 / 2000"))
+        assertTrue(value.historyStatus.contains("history content failed verification"))
     }
 
     @Test
