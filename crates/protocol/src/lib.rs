@@ -32,8 +32,11 @@ pub struct Contract {
     pub replay_params: ReplayParams,
     pub replay_page: ReplayPage,
     pub mutation_receipt: MutationReceipt,
+    pub session_list: SessionList,
+    pub history_query: HistoryQuery,
     pub agent_start: AgentStart,
     pub agent_command: AgentCommand,
+    pub agent_authenticate: AgentAuthenticate,
     pub permission_decision: PermissionDecision,
     pub agent_view: AgentView,
 }

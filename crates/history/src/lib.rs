@@ -3,9 +3,11 @@
 //! never an IDE event thread. Dropping a caller does not roll back queued work.
 mod blobs;
 mod model;
+mod recorder;
 mod store;
 pub use model::*;
-pub use store::HistoryStore;
+pub use recorder::{Observation, Recorder};
+pub use store::{HistoryStore, StorageReport};
 
 #[derive(Debug)]
 pub enum Error {
@@ -21,6 +23,8 @@ pub enum Error {
     Locked,
     Busy,
     WorkerStopped,
+    ReadOnly,
+    BudgetExceeded,
     UnsupportedSchema(u32),
 }
 impl std::fmt::Display for Error {
@@ -38,6 +42,10 @@ impl std::fmt::Display for Error {
             Self::InvalidCursor => "history cursor requires resynchronization",
             Self::Locked => "history is owned by another writer",
             Self::Busy => "history queue is full",
+            Self::ReadOnly => "history requires recovery; writes are disabled",
+            Self::BudgetExceeded => {
+                "history storage budget exhausted; close sessions and review retention"
+            }
             Self::WorkerStopped => "history worker stopped; mutation outcome may be unknown",
             Self::UnsupportedSchema(_) => "history schema is newer than this engine",
         })

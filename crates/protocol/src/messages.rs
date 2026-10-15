@@ -65,8 +65,24 @@ pub enum JsonRpc {
 /// future methods produce METHOD_NOT_FOUND rather than a JSON parse failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Method {
+    #[serde(rename = "history.diff")]
+    HistoryDiff,
+    #[serde(rename = "history.files")]
+    HistoryFiles,
+    #[serde(rename = "history.turns")]
+    HistoryTurns,
+    #[serde(rename = "history.location")]
+    HistoryLocation,
+    #[serde(rename = "history.operations")]
+    HistoryOperations,
+    #[serde(rename = "sessions.archive")]
+    SessionArchive,
+    #[serde(rename = "sessions.list")]
+    SessionList,
     #[serde(rename = "sessions.baseline")]
     SessionBaseline,
+    #[serde(rename = "sessions.authenticate")]
+    SessionAuthenticate,
     #[serde(rename = "sessions.start")]
     SessionStart,
     #[serde(rename = "sessions.active")]
@@ -95,7 +111,15 @@ pub enum Method {
 impl Method {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
+            "history.diff" => Some(Self::HistoryDiff),
+            "history.files" => Some(Self::HistoryFiles),
+            "history.turns" => Some(Self::HistoryTurns),
+            "history.location" => Some(Self::HistoryLocation),
+            "history.operations" => Some(Self::HistoryOperations),
+            "sessions.archive" => Some(Self::SessionArchive),
+            "sessions.list" => Some(Self::SessionList),
             "sessions.baseline" => Some(Self::SessionBaseline),
+            "sessions.authenticate" => Some(Self::SessionAuthenticate),
             "sessions.start" => Some(Self::SessionStart),
             "sessions.active" => Some(Self::SessionActive),
             "sessions.prompt" => Some(Self::SessionPrompt),

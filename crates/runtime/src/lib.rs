@@ -7,4 +7,13 @@
 #[cfg(unix)]
 pub mod agents;
 #[cfg(unix)]
+pub mod maintenance;
+#[cfg(unix)]
+pub mod recorder;
+#[cfg(unix)]
 pub mod worktrees;
+
+#[cfg(all(test, unix))]
+#[allow(dead_code)]
+#[path = "../../../tests/support/repository.rs"]
+mod test_repository;

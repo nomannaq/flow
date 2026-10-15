@@ -55,7 +55,7 @@ pub struct FileEntry {
     pub mode: u32,
     pub kind: FileKind,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileInput {
     pub bytes: Vec<u8>,
     pub mode: u32,
