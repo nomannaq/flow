@@ -11,6 +11,9 @@ internal data class AgentView(
     val workspace: String? = null,
     val activity: List<String> = emptyList(),
     val permissions: List<AgentPermission> = emptyList(),
+    val authMethods: List<String> = emptyList(),
+    val compatibility: String = "",
+    val recordedOperations: Long = 0,
 )
 
 internal object AgentProtocol {
@@ -27,7 +30,11 @@ internal object AgentProtocol {
             activity.map { item ->
                 val event = item.asJsonObject
                 val text = event["text"].asString.also { require(it.length <= 8192) }
-                "${event["kind"].asString}: $text"
+                when (event["kind"].asString) {
+                    "message.delta" -> text
+                    "turn.started" -> "You: $text"
+                    else -> text
+                }
             },
             permissions.map { item ->
                 val permission = item.asJsonObject
@@ -40,15 +47,19 @@ internal object AgentProtocol {
                     options.map { it.asJsonObject.let { option -> option["id"].asString to option["name"].asString } },
                 )
             },
+            value.getAsJsonArray("authMethods")?.map { it.asString.also { id -> require(id.length <= 256) } }?.also { require(it.size <= 32) }.orEmpty(),
+            optional("compatibility").orEmpty().also { require(it.length <= 4096) },
+            value["recordedOperations"]?.asLong?.also { require(it >= 0) } ?: 0,
         )
     }
-    fun start(executable: String, arguments: String, commit: String, prompt: String, authMethod: String): JsonObject {
+    fun start(executable: String, arguments: String, commit: String, prompt: String, authMethod: String, sourceSessionId: String? = null, writersStopped: Boolean = false, model: String = ""): JsonObject {
         require(runCatching { executable.length <= 4096 && Path.of(executable).isAbsolute }.getOrDefault(false)) {
             "Enter the absolute path to your ACP adapter executable."
         }
-        require(Regex("(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})").matches(commit)) {
+        require(sourceSessionId != null || Regex("(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})").matches(commit)) {
             "Choose a baseline with Use current commit, or paste a full Git commit hash. A filename is not a commit."
         }
+        require(sourceSessionId == null || (writersStopped && Regex("[A-Za-z0-9._:-]{1,128}").matches(sourceSessionId))) { "Confirm all previous session writers have stopped." }
         require(prompt.isNotBlank()) { "Enter a task in the prompt box before starting a session." }
         require(prompt.toByteArray().size <= 32768) { "The prompt must be at most 32 KiB." }
         val args = try {
@@ -63,11 +74,27 @@ internal object AgentProtocol {
             // Do not display parser exceptions containing adapter arguments or secrets.
             throw IllegalArgumentException("Adapter arguments must be a JSON array of up to 32 strings; use [] for none.")
         }
+        require(model.length <= 256 && !model.any { it.isISOControl() }) { "Model must be at most 256 characters without control characters." }
+        require(model.isBlank() || args.size() <= 30) { "Leave room for the model override in adapter arguments." }
         require(authMethod.length <= 256) { "Authentication method must be at most 256 characters." }
         return JsonObject().apply {
             addProperty("executable", executable)
-            add("arguments", JsonArray().apply { args.forEach { add(it.asString) } })
-            addProperty("commit", commit)
+            add(
+                "arguments",
+                JsonArray().apply {
+                    args.forEach { add(it.asString) }
+                    if (model.isNotBlank()) {
+                        add("-c")
+                        // JSON string syntax is also valid for this TOML string value.
+                        add("model=${com.google.gson.JsonPrimitive(model)}")
+                    }
+                },
+            )
+            addProperty("commit", if (sourceSessionId == null) commit else "")
+            if (sourceSessionId != null) {
+                addProperty("sourceSessionId", sourceSessionId)
+                addProperty("writersStopped", writersStopped)
+            }
             addProperty("prompt", prompt)
             if (authMethod.isNotBlank()) addProperty("authMethod", authMethod)
         }
