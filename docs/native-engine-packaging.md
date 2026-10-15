@@ -55,7 +55,7 @@ It stages only its fixed generated `build/native-engine` directory.
 The package contains:
 
 ```text
-Flow/
+flow-jetbrains/
   lib/                         # plugin JAR; IDE supplies Kotlin/coroutines
   distribution.json           # versions, protocol, target, digest, linked libraries
   dependency-inventory.json   # engine normal/build closure and declared licenses
@@ -206,7 +206,7 @@ signature must be applied before hashing and packaging.
 | Target | Observed checks in this session | Still required |
 | --- | --- | --- |
 | macOS arm64 | 75 Rust tests; 26 Kotlin/native tests; 7 Python regressions; formatting/Clippy; strict Gradle build, ZIP startup/restart/shutdown and packaged ACP/history/descendant-shutdown acceptance; Plugin Verifier compatibility with the pinned IDE (existing API warnings) | Clean-machine installation and release signing; monitor the historical UI test timeout |
-| Linux x86-64 | Full Rust suite in an isolated Debian 12 x86-64 container, plus first-start XDG test (75 total); 7 Python regressions; release ELF/dependency/glibc inspection; offline two-edit/history/checkpoint/descendant-shutdown acceptance | Native Ubuntu CI plugin build and IDE installation; container evidence is not desktop IDE evidence |
+| Linux x86-64 | 75 Rust tests including first-start XDG; 7 Python regressions; release ELF/dependency/glibc inspection; 26 Kotlin/native tests under Xvfb; strict Gradle verification, packaged startup/editing/history/checkpoint/descendant-shutdown acceptance, and Plugin Verifier compatibility in an isolated Debian 12 x86-64 container | Native Ubuntu CI and clean-machine IDE installation; emulated container evidence is not desktop installation evidence |
 | Windows x86-64 | All Rust targets compile and pass Clippy with warnings denied using `x86_64-pc-windows-gnu`; platform/path/PE validation fixtures pass | Native MSVC release packaging, Windows lock regression execution, Job Object lifecycle, Kotlin/native suite, and clean-machine installation |
 | macOS Intel | Target selection, package layout and Mach-O validation fixtures | Native Intel runner build, full suite and clean-machine installation |
 
@@ -219,6 +219,8 @@ See the [run](https://github.com/nomannaq/flow/actions/runs/38747513905) and
 [captured API evidence](native-ci-startup-failure.json). Repository-owner/GitHub
 workflow registration or dispatch recovery is still required; its backend root
 cause is unconfirmed.
+The subsequent [push of the shutdown fix and acceptance updates](https://github.com/nomannaq/flow/actions/runs/38749837690)
+also failed before creating any jobs; both attempts are captured in the evidence.
 
 Cross-compilation checks Windows APIs and test compilation; it does not verify
 the MSVC payload or Windows execution. The native matrix must pass before claiming those platforms
@@ -250,10 +252,19 @@ suite passed. Timeout diagnostics now include list selections/counts and panel
 messages. That intermittent UI issue is still open; the shutdown fix does not
 claim to resolve it.
 
-A fresh Linux Gradle cache also exposed 11 missing parent-POM/BOM metadata
+A fresh Linux Gradle cache also exposed 12 missing parent-POM/BOM metadata
 checksums. Each downloaded file was independently compared with its Maven Central
 copy before adding its exact SHA-256 and origin URL. Strict metadata verification
 and the dependency lockfile remain in force; no broad trust exception was added.
+
+The Linux IDE checks ran using Rust 1.99.0, Temurin JDK 21, Xvfb and an isolated
+Gradle cache in a Debian 12 x86-64 container emulated on this arm64 Mac. The final
+command was `./gradlew check checkPackagedAgentSession verifyPluginProjectConfiguration verifyPlugin --no-watch-fs --dependency-verification=strict --console=plain`
+under `xvfb-run -a`. File watching was disabled only for this emulated container
+after an interrupted native watcher; CI still uses its normal configuration.
+All 26 Kotlin/native tests passed without skips. Plugin Verifier reports
+compatibility with four deprecated and six experimental API usages. Local reports
+are retained under `build/native-acceptance-linux/`.
 
 The current Mac archive is
 `build/distributions/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip` with SHA-256
@@ -261,6 +272,13 @@ The current Mac archive is
 Its engine SHA-256 is
 `accbeaaaa741e39020f75820be178eba4c20b72ac1e0182151b5c0b84a57bdf3`.
 These identify this local build only. B12's real-Codex acceptance stays open.
+
+The Linux archive is
+`build/distributions/flow-jetbrains-0.1.0-x86_64-unknown-linux-gnu.zip` with SHA-256
+`e2f8f50f9b36e98ed55919cc244d1f75c272b1c9ab9a281ddee18a45dd48240e`.
+Its engine SHA-256 is
+`d8ab8b16325b05afa36641bfa3e035121b84a439e70a6c363e7392ea7e34495d`.
+It is unsigned and remains an internal smoke artifact pending host installation.
 
 ## Historical Apple Silicon B28 validation — 2026-10-15
 
