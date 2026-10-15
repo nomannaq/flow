@@ -11,7 +11,17 @@ internal class EngineLaunchException(message: String) : IllegalStateException(me
 
 /** Called on the controller's IO dispatcher. IntelliJ owns plugin ZIP installation. */
 internal object EngineExecutable {
-    private const val TARGET = "aarch64-apple-darwin"
+    internal fun target(os: String, architecture: String): String {
+        val arch = architecture.lowercase()
+        return when {
+            os == "Mac OS X" && arch in setOf("aarch64", "arm64") -> "aarch64-apple-darwin"
+            os == "Mac OS X" && arch in setOf("amd64", "x86_64") -> "x86_64-apple-darwin"
+            os == "Linux" && arch in setOf("amd64", "x86_64") -> "x86_64-unknown-linux-gnu"
+            os.startsWith("Windows") && arch in setOf("amd64", "x86_64") -> "x86_64-pc-windows-msvc"
+            else -> throw EngineLaunchException("Flow supports Windows x86-64, Linux x86-64, and macOS Intel/Apple Silicon. Install a package for a supported platform.")
+        }
+    }
+
     fun resolve(
         pluginRoot: Path,
         pluginVersion: String,
@@ -27,11 +37,12 @@ internal object EngineExecutable {
             }
             return path.toRealPath()
         }
-        if (os != "Mac OS X" || architecture.lowercase() !in setOf("aarch64", "arm64")) {
-            throw EngineLaunchException("This Flow package supports macOS Apple Silicon only. Install a package validated for this platform.")
-        }
-        if ((osVersion.substringBefore('.').toIntOrNull() ?: 0) < 13) {
+        val target = target(os, architecture)
+        if (os == "Mac OS X" && (osVersion.substringBefore('.').toIntOrNull() ?: 0) < 13) {
             throw EngineLaunchException("This Flow engine requires macOS 13 or later.")
+        }
+        if (os.startsWith("Windows") && (osVersion.substringBefore('.').toIntOrNull() ?: 0) < 10) {
+            throw EngineLaunchException("This Flow engine requires Windows 10 or later (x86-64).")
         }
         try {
             require(pluginRoot.isAbsolute && pluginRoot.toRealPath() == pluginRoot.normalize())
@@ -42,15 +53,19 @@ internal object EngineExecutable {
                     require(!Files.isSymbolicLink(path))
                 }
                 require(Files.isRegularFile(path, NOFOLLOW_LINKS))
+                require(path.toRealPath() == path.normalize()) // Includes Windows junction redirection.
                 return path
             }
             val manifestPath = regular("distribution.json")
             require(Files.size(manifestPath) in 1..65536)
             val manifest = ProtocolJson.parse(Files.readString(manifestPath))
-            require(manifest["schemaVersion"].asInt == 1 && manifest["target"].asString == TARGET)
+            require(manifest["schemaVersion"].asInt == 1)
+            if (manifest["target"].asString != target) {
+                throw EngineLaunchException("This Flow package does not match this computer. Install the $target package.")
+            }
             require(manifest["protocolVersion"].asInt == FLOW_PROTOCOL_VERSION)
             require(manifest["pluginVersion"].asString == pluginVersion && manifest["engineVersion"].asString == pluginVersion)
-            val relative = "bin/$TARGET/flow-engine"
+            val relative = "bin/$target/flow-engine${if (os.startsWith("Windows")) ".exe" else ""}"
             require(manifest["enginePath"].asString == relative)
             val expected = manifest["sha256"].asString
             require(Regex("[a-f0-9]{64}").matches(expected))
@@ -68,13 +83,15 @@ internal object EngineExecutable {
             require(digest.digest().joinToString("") { "%02x".format(it) } == expected)
             // ZIP installers may omit Unix mode bits. Restore only owner execute,
             // after verification, without broadening read/write permissions.
-            if (!Files.isExecutable(executable)) {
+            if (!Files.isExecutable(executable) && !os.startsWith("Windows")) {
                 val permissions = Files.getPosixFilePermissions(executable, NOFOLLOW_LINKS).toMutableSet()
                 permissions.add(PosixFilePermission.OWNER_EXECUTE)
                 Files.setPosixFilePermissions(executable, permissions)
             }
             require(Files.isExecutable(executable))
             return executable
+        } catch (error: EngineLaunchException) {
+            throw error
         } catch (_: Exception) {
             throw EngineLaunchException("The bundled Flow engine is missing, damaged, incompatible, or inaccessible. Reinstall a trusted matching Flow package.")
         }

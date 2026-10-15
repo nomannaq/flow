@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -27,6 +28,7 @@ class EngineExecutableTest {
     fun verifiesIdentityAndRestoresOnlyOwnerExecute() {
         val root = Files.createTempDirectory("Flow installed with spaces ").toRealPath()
         try {
+            assumeTrue(Files.getFileStore(root).supportsFileAttributeView("posix"))
             val binary = Files.createDirectories(root.resolve("bin/aarch64-apple-darwin")).resolve("flow-engine")
             Files.writeString(binary, "fixture executable bytes")
             Files.setPosixFilePermissions(binary, setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE))
@@ -55,11 +57,45 @@ class EngineExecutableTest {
         val root = Files.createTempDirectory("flow-unsupported-").toRealPath()
         try {
             assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = "Linux", architecture = "aarch64") }.message!!.contains("Apple Silicon"))
-            assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = "Mac OS X", architecture = "x86_64") }.message!!.contains("Apple Silicon"))
+            assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = "Windows 11", architecture = "x86") }.message!!.contains("x86-64"))
             assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = "Mac OS X", architecture = "aarch64", osVersion = "12.7") }.message!!.contains("macOS 13"))
+            assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = "Windows 7", architecture = "amd64", osVersion = "6.1") }.message!!.contains("Windows 10"))
             assertTrue(assertThrows(EngineLaunchException::class.java) { resolve(root) }.message!!.contains("Reinstall"))
         } finally {
             root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun resolvesEveryPlatformAndRejectsWrongPackageAndTampering() {
+        for ((os, arch, target) in listOf(
+            Triple("Mac OS X", "arm64", "aarch64-apple-darwin"),
+            Triple("Mac OS X", "x86_64", "x86_64-apple-darwin"),
+            Triple("Linux", "amd64", "x86_64-unknown-linux-gnu"),
+            Triple("Windows 11", "amd64", "x86_64-pc-windows-msvc"),
+        )) {
+            val root = Files.createTempDirectory("Flow platform ").toRealPath()
+            try {
+                val relative = "bin/$target/flow-engine${if (os.startsWith("Windows")) ".exe" else ""}"
+                val binary = root.resolve(relative)
+                Files.createDirectories(binary.parent)
+                Files.writeString(binary, "fixture executable bytes")
+                // These are fixture bytes, never launched. Windows ACLs decide executability.
+                if (Files.getFileStore(root).supportsFileAttributeView("posix")) binary.toFile().setExecutable(true, true)
+                val manifest = manifest(binary).apply {
+                    addProperty("target", target)
+                    addProperty("enginePath", relative)
+                }
+                Files.writeString(root.resolve("distribution.json"), manifest.toString())
+                assertEquals(binary, EngineExecutable.resolve(root, "0.1.0", os = os, architecture = arch, osVersion = "13.0"))
+                Files.writeString(root.resolve("distribution.json"), manifest.deepCopy().apply { addProperty("target", "wrong-platform") }.toString())
+                assertTrue(assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = os, architecture = arch, osVersion = "13.0") }.message!!.contains(target))
+                Files.writeString(root.resolve("distribution.json"), manifest.toString())
+                Files.writeString(binary, "corrupted fixture bytes")
+                assertThrows(EngineLaunchException::class.java) { EngineExecutable.resolve(root, "0.1.0", os = os, architecture = arch, osVersion = "13.0") }
+            } finally {
+                root.toFile().deleteRecursively()
+            }
         }
     }
 
@@ -96,7 +132,7 @@ class EngineExecutableTest {
                     if (Files.isDirectory(source)) Files.createDirectories(target) else Files.copy(source, target)
                 }
             }
-            val binary = resolve(installed)
+            val binary = EngineExecutable.resolve(installed, "0.1.0")
             assertTrue(binary.startsWith(root))
             val project = Files.createDirectory(root.resolve("Project with spaces"))
             val data = Files.createDirectory(root.resolve("Private data"))

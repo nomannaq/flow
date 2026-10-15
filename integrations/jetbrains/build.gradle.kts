@@ -47,11 +47,22 @@ val buildProtocolTestEngine by tasks.registering(Exec::class) {
     commandLine("cargo", "build", "-p", "engine", "--locked", "--target-dir", rootProject.file("../../target"))
 }
 
+val windowsHost = System.getProperty("os.name").startsWith("Windows")
+val engineFileName = if (windowsHost) "flow-engine.exe" else "flow-engine"
+val pythonExecutable = providers.environmentVariable("FLOW_PYTHON").getOrElse(if (windowsHost) "python" else "python3")
+val nativeTarget = when {
+    windowsHost && System.getProperty("os.arch").lowercase() in setOf("amd64", "x86_64") -> "x86_64-pc-windows-msvc"
+    System.getProperty("os.name") == "Linux" && System.getProperty("os.arch").lowercase() in setOf("amd64", "x86_64") -> "x86_64-unknown-linux-gnu"
+    System.getProperty("os.name") == "Mac OS X" && System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64") -> "aarch64-apple-darwin"
+    System.getProperty("os.name") == "Mac OS X" && System.getProperty("os.arch").lowercase() in setOf("amd64", "x86_64") -> "x86_64-apple-darwin"
+    else -> error("Unsupported native engine build host")
+}
+
 val stageNativeEngine by tasks.registering(Exec::class) {
     group = "build"
-    description = "Build and stage the macOS arm64 release engine, manifest and dependency notices."
+    description = "Build and stage the host release engine, manifest and dependency notices."
     workingDir = rootProject.file("../..")
-    commandLine("python3", "scripts/package_native_engine.py", "--version", project.version.toString())
+    commandLine(pythonExecutable, "scripts/package_native_engine.py", "--version", project.version.toString())
     if (gradle.startParameter.isOffline) args("--offline")
     providers.environmentVariable("FLOW_NATIVE_SIGNING_IDENTITY").orNull?.let { args("--signing-identity", it) }
     // Let Cargo decide rebuilds; staging always rechecks the binary and regenerates notices.
@@ -69,8 +80,15 @@ tasks.withType<PrepareSandboxTask>().configureEach {
 
 tasks.test {
     dependsOn(buildProtocolTestEngine)
+    // Native executables and external fixtures must invalidate cached test runs.
+    inputs.file(rootProject.file("../../target/debug/$engineFileName"))
+    inputs.dir(layout.buildDirectory.dir("native-engine"))
+    inputs.files(rootProject.file("../../tests/fixtures/engine/fake_engine.py"), rootProject.file("../../scripts/spikes/fixture_agent.py"))
     systemProperty("flow.test.nativePayload", layout.buildDirectory.dir("native-engine").get().asFile.absolutePath)
-    systemProperty("flow.test.engine", rootProject.file("../../target/debug/flow-engine").absolutePath)
+    systemProperty("flow.test.engine", rootProject.file("../../target/debug/$engineFileName").absolutePath)
+    // Agent validation requires an absolute executable, not a PATH command.
+    val pythonPath = providers.exec { commandLine(pythonExecutable, "-c", "import sys; print(sys.executable)") }.standardOutput.asText.get().trim()
+    systemProperty("flow.test.python", pythonPath)
     systemProperty("flow.test.fakeEngine", rootProject.file("../../tests/fixtures/engine/fake_engine.py").absolutePath)
     systemProperty("flow.test.adapterFixture", rootProject.file("../../scripts/spikes/fixture_agent.py").absolutePath)
 }
@@ -120,7 +138,7 @@ tasks.check {
 tasks.runIde {
     dependsOn(buildProtocolTestEngine)
     if (providers.gradleProperty("flowBundledEngine").orNull != "true") {
-        jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/flow-engine").absolutePath}")
+        jvmArgs("-Dflow.engine.path=${rootProject.file("../../target/debug/$engineFileName").absolutePath}")
     }
     if (providers.gradleProperty("flowCompatibilitySpikes").orNull == "true") {
         jvmArgs("-Dflow.compatibility.spikes=true")
@@ -128,6 +146,7 @@ tasks.runIde {
 }
 
 tasks.buildPlugin {
+    archiveClassifier.set(nativeTarget)
     filesMatching("**/bin/**/flow-engine") {
         permissions { unix("rwxr-xr-x") }
     }
@@ -139,6 +158,16 @@ val checkPackagedPlugin by tasks.registering(Exec::class) {
     dependsOn(tasks.buildPlugin)
     workingDir = rootProject.file("../..")
     doFirst {
-        commandLine("python3", "scripts/check_packaged_plugin.py", "--plugin", tasks.buildPlugin.get().archiveFile.get().asFile.absolutePath)
+        commandLine(pythonExecutable, "scripts/check_packaged_plugin.py", "--plugin", tasks.buildPlugin.get().archiveFile.get().asFile.absolutePath)
+    }
+}
+
+tasks.register<Exec>("checkPackagedAgentSession") {
+    group = "verification"
+    description = "Verify offline ACP edits, durable history and descendant cleanup using the installed release engine."
+    dependsOn(tasks.buildPlugin)
+    workingDir = rootProject.file("../..")
+    doFirst {
+        commandLine(pythonExecutable, "scripts/check_packaged_plugin.py", "--session-fixture", "--plugin", tasks.buildPlugin.get().archiveFile.get().asFile.absolutePath)
     }
 }

@@ -21,14 +21,14 @@ class EngineService(private val project: Project, internal val scope: CoroutineS
                 // Native adapter authentication stays outside Flow storage and logs.
                 val inherited = environment().toMap()
                 environment().clear()
-                for (name in listOf("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL", "TERM", "CODEX_HOME", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_API_KEY", "OPENAI_API_KEY", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "__CF_USER_TEXT_ENCODING")) {
-                    inherited[name]?.let { environment()[name] = it }
+                for (name in listOf("HOME", "PATH", "TMPDIR", "XDG_DATA_HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATHEXT", "COMSPEC", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "LANG", "LC_ALL", "TERM", "CODEX_HOME", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_API_KEY", "OPENAI_API_KEY", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "__CF_USER_TEXT_ENCODING")) {
+                    inherited.entries.firstOrNull { it.key.equals(name, ignoreCase = System.getProperty("os.name").startsWith("Windows")) }?.let { environment()[it.key] = it.value }
                 }
             }.let { builder ->
                 try {
                     builder.start()
                 } catch (_: java.io.IOException) {
-                    throw EngineLaunchException("Flow could not start its verified engine. Check macOS security approval and executable permissions, then retry. See the native packaging guide.")
+                    throw EngineLaunchException("Flow could not start its verified engine. Check OS security approval, executable permissions and system requirements, then retry. See the native packaging guide.")
                 }
             }
     })

@@ -80,7 +80,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             controller.start()
             await("engine connection") { controller.view.value.connected }
             withContext(Dispatchers.EDT) {
-                field(taskPanel, "ACP adapter executable").text = "/usr/bin/python3"
+                field(taskPanel, "ACP adapter executable").text = requireNotNull(System.getProperty("flow.test.python"))
                 field(taskPanel, "Model override").text = ""
                 field(taskPanel, "Authentication method").text = ""
                 field(taskPanel, "Advanced adapter arguments").text = JsonArray().apply {
@@ -226,11 +226,11 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
     private fun tree(root: Container) = components(root).filterIsInstance<JTree>().single()
 
     private fun git(root: Path, vararg arguments: String): String {
-        val process = ProcessBuilder(listOf("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "user.name=Flow", "-c", "user.email=fixture@example.invalid") + arguments)
+        val process = ProcessBuilder(listOf("git", "-c", "core.hooksPath=${if (System.getProperty("os.name").startsWith("Windows")) "NUL" else "/dev/null"}", "-c", "commit.gpgSign=false", "-c", "user.name=Flow", "-c", "user.email=fixture@example.invalid") + arguments)
             .directory(root.toFile()).redirectErrorStream(true).apply {
                 environment().keys.removeIf { it.startsWith("GIT_") }
                 environment()["GIT_CONFIG_NOSYSTEM"] = "1"
-                environment()["GIT_CONFIG_GLOBAL"] = "/dev/null"
+                environment()["GIT_CONFIG_GLOBAL"] = if (System.getProperty("os.name").startsWith("Windows")) "NUL" else "/dev/null"
                 environment()["GIT_TEMPLATE_DIR"] = ""
             }.start()
         val output = process.inputStream.readAllBytes().decodeToString()

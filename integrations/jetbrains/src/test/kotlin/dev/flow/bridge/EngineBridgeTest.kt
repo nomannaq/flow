@@ -30,7 +30,7 @@ class EngineBridgeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val processes = CopyOnWriteArrayList<Process>()
         fun git(vararg arguments: String) {
-            val process = ProcessBuilder(listOf("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "user.name=Flow", "-c", "user.email=fixture@example.invalid") + arguments)
+            val process = ProcessBuilder(listOf("git", "-c", "core.hooksPath=${if (System.getProperty("os.name").startsWith("Windows")) "NUL" else "/dev/null"}", "-c", "commit.gpgSign=false", "-c", "user.name=Flow", "-c", "user.email=fixture@example.invalid") + arguments)
                 .directory(project.toFile()).redirectErrorStream(true).start()
             process.inputStream.readAllBytes()
             assertEquals(0, process.waitFor())
@@ -60,7 +60,7 @@ class EngineBridgeTest {
             assertEquals(baseline, repeated.baseline)
             assertTrue(repeated.actionError.isEmpty())
             val args = com.google.gson.JsonArray().apply { add(requireNotNull(System.getProperty("flow.test.adapterFixture"))) }
-            controller.agentRequest("sessions.start", AgentProtocol.start("/usr/bin/python3", args.toString(), baseline, "write probe", ""))
+            controller.agentRequest("sessions.start", AgentProtocol.start(requireNotNull(System.getProperty("flow.test.python")), args.toString(), baseline, "write probe", ""))
             val waiting = withTimeout(15000) { controller.view.first { it.agent.permissions.isNotEmpty() } }
             val permission = waiting.agent.permissions.single()
             assertEquals(listOf("once"), permission.options.map { it.first })
@@ -251,7 +251,7 @@ class EngineBridgeTest {
 
     private fun fake(mode: String): Process {
         val script = requireNotNull(System.getProperty("flow.test.fakeEngine"))
-        return ProcessBuilder("/usr/bin/python3", script, mode).start()
+        return ProcessBuilder(requireNotNull(System.getProperty("flow.test.python")), script, mode).start()
     }
 
     @Test
