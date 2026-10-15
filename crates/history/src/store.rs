@@ -108,9 +108,30 @@ impl HistoryStore {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")));
         let base = base.ok_or(Error::Invalid("application data location unavailable"))?;
-        // Require an existing canonical platform data directory before creating Flow's root.
-        let base = base.canonicalize()?;
         let project = project_root.canonicalize()?;
+        if !base.is_absolute()
+            || base
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            return Err(Error::Invalid("application data location must be absolute"));
+        }
+        // A fresh Linux account may not have ~/.local/share yet. Check the
+        // existing ancestor before creating directories, including XDG overrides.
+        if !base.exists() {
+            let ancestor = base
+                .ancestors()
+                .find(|p| p.exists())
+                .ok_or(Error::Invalid("application data parent unavailable"))?
+                .canonicalize()?;
+            if ancestor.starts_with(&project) || inside_repository(&ancestor) {
+                return Err(Error::Invalid(
+                    "history must be stored outside repositories",
+                ));
+            }
+            fs::create_dir_all(&base)?;
+        }
+        let base = base.canonicalize()?;
         if base.starts_with(&project) || inside_repository(&base) {
             return Err(Error::Invalid(
                 "application data location is inside a repository",
@@ -845,7 +866,7 @@ impl Database {
             .read(true)
             .write(true)
             .open(lock_path)?;
-        lock.try_lock().map_err(|_| Error::Locked)?;
+        crate::try_lock_file(&lock).map_err(|_| Error::Locked)?;
         let content = directory.join("blobs");
         blobs::directory(&content)?;
         let path = directory.join("history.sqlite3");
@@ -892,7 +913,7 @@ impl Database {
                         .to_str()
                         .ok_or(Error::Invalid("non-UTF-8 backup path"))?],
                 )?;
-                File::open(&backup)?.sync_all()?;
+                blobs::sync_file(&backup)?;
                 blobs::sync_dir(directory)?;
             }
             let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;

@@ -7,11 +7,12 @@ use io::{Lease, directory, git, git_input, now, read, text, token, write};
 pub use io::{Owner, Recovery};
 use protocol::{MutationKey, WorkspaceId};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::{ffi::OsStrExt, fs::PermissionsExt};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::Read,
-    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
@@ -135,7 +136,7 @@ impl WorktreeManager {
         // Do not allow publication into a different project's history store.
         let expected = format!(
             "project-{}",
-            ContentId::hash(repository.root.as_os_str().as_bytes()).as_str()
+            ContentId::hash(repository.root.as_os_str().as_encoded_bytes()).as_str()
         );
         if store.directory().file_name().and_then(|s| s.to_str()) != Some(&expected) {
             return Err(Error::Invalid(
@@ -511,7 +512,7 @@ pub(crate) fn verify_owned_record(record: &Preparation) -> Result<()> {
     }
     let backlink = text(fs::read(admin.join("gitdir"))?)?;
     let reason = text(fs::read(admin.join("locked"))?)?;
-    if Path::new(&backlink) != path.join(".git")
+    if Path::new(&backlink).canonicalize()? != path.join(".git").canonicalize()?
         || reason != format!("flow-{}", record.workspace.owner_token)
         || text(git(path, ["rev-parse", "HEAD"])?)? != record.workspace.base_commit
         || !fs::read(admin.join("HEAD"))?.starts_with(record.workspace.base_commit.as_bytes())
@@ -528,8 +529,13 @@ fn key(owner: &str, suffix: &str) -> Result<MutationKey> {
         .map_err(|_| Error::Invalid("invalid mutation identity"))
 }
 fn path_text(path: &Path) -> Result<&str> {
-    path.to_str()
-        .ok_or(Error::Invalid("non-UTF-8 paths are unsupported"))
+    let text = path
+        .to_str()
+        .ok_or(Error::Invalid("non-UTF-8 paths are unsupported"))?;
+    // Git for Windows accepts drive paths; canonical Rust paths use \\?\.
+    #[cfg(windows)]
+    let text = text.strip_prefix("\\\\?\\").unwrap_or(text);
+    Ok(text)
 }
 
 fn validate(root: &Path) -> Result<()> {
@@ -659,7 +665,7 @@ fn capture_once(root: &Path, include_ignored: bool) -> Result<BTreeMap<String, F
             }
             continue;
         }
-        paths.insert(path_text(relative)?.to_owned());
+        paths.insert(path_text(relative)?.replace(std::path::MAIN_SEPARATOR, "/"));
     }
     if paths.len() > history::MAX_ENTRIES {
         return Err(Error::Invalid("workspace exceeds history path limit"));
@@ -702,15 +708,22 @@ fn capture_once(root: &Path, include_ignored: bool) -> Result<BTreeMap<String, F
             continue;
         } // tracked file replaced by a directory
         let (kind, bytes) = if meta.file_type().is_symlink() {
-            (
-                FileKind::Symlink,
-                fs::read_link(&path)?.as_os_str().as_bytes().to_vec(),
-            )
+            (FileKind::Symlink, link_bytes(&fs::read_link(&path)?)?)
         } else if meta.is_file() {
             let mut bytes = Vec::new();
             let file = File::open(&path)?;
             if identity(&file.metadata()?) != identity(&meta) {
                 return Err(Error::Unstable);
+            }
+            #[cfg(windows)]
+            {
+                let opened = winapi_util::file::information(&file)?;
+                let current = winapi_util::file::information(File::open(&path)?)?;
+                if (opened.volume_serial_number(), opened.file_index())
+                    != (current.volume_serial_number(), current.file_index())
+                {
+                    return Err(Error::Unstable);
+                }
             }
             (&file)
                 .take(history::MAX_BLOB_BYTES as u64 + 1)
@@ -735,13 +748,34 @@ fn capture_once(root: &Path, include_ignored: bool) -> Result<BTreeMap<String, F
             relative,
             FileInput {
                 bytes,
-                mode: meta.permissions().mode() & 0o7777,
+                mode: file_mode(&meta),
                 kind,
             },
         );
     }
     Ok(files)
 }
+#[cfg(unix)]
+fn file_mode(meta: &fs::Metadata) -> u32 {
+    meta.permissions().mode() & 0o7777
+}
+#[cfg(windows)]
+fn file_mode(meta: &fs::Metadata) -> u32 {
+    if meta.permissions().readonly() {
+        0o444
+    } else {
+        0o644
+    }
+}
+#[cfg(unix)]
+fn link_bytes(path: &Path) -> Result<Vec<u8>> {
+    Ok(path.as_os_str().as_bytes().to_vec())
+}
+#[cfg(windows)]
+fn link_bytes(path: &Path) -> Result<Vec<u8>> {
+    Ok(path_text(path)?.as_bytes().to_vec())
+}
+#[cfg(unix)]
 fn identity(meta: &fs::Metadata) -> (u64, u64, u64, u32, i64, i64, i64, i64) {
     use std::os::unix::fs::MetadataExt;
     (
@@ -753,6 +787,16 @@ fn identity(meta: &fs::Metadata) -> (u64, u64, u64, u32, i64, i64, i64, i64) {
         meta.mtime_nsec(),
         meta.ctime(),
         meta.ctime_nsec(),
+    )
+}
+#[cfg(windows)]
+fn identity(meta: &fs::Metadata) -> (u64, u64, u64, u32) {
+    use std::os::windows::fs::MetadataExt;
+    (
+        meta.creation_time(),
+        meta.last_write_time(),
+        meta.file_size(),
+        meta.file_attributes(),
     )
 }
 fn source_fingerprint(root: &Path) -> Result<ContentId> {
@@ -773,5 +817,5 @@ fn source_fingerprint(root: &Path) -> Result<ContentId> {
     Ok(ContentId::hash(&bytes))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;

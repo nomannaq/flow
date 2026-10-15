@@ -45,7 +45,6 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     writer: W,
     store: Option<history::HistoryStore>,
 ) -> io::Result<()> {
-    #[cfg(unix)]
     let mut agents = if let Some(history) = store.clone() {
         let check = history.clone();
         let writable =
@@ -56,15 +55,7 @@ pub async fn serve_with_store<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     } else {
         None
     };
-    let result = serve_connection(
-        reader,
-        writer,
-        store,
-        #[cfg(unix)]
-        &mut agents,
-    )
-    .await;
-    #[cfg(unix)]
+    let result = serve_connection(reader, writer, store, &mut agents).await;
     if let Some(host) = &mut agents {
         host.shutdown().await;
     }
@@ -75,7 +66,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     reader: R,
     writer: W,
     store: Option<history::HistoryStore>,
-    #[cfg(unix)] agents: &mut Option<runtime::agents::AgentHost>,
+    agents: &mut Option<runtime::agents::AgentHost>,
 ) -> io::Result<()> {
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
@@ -96,7 +87,6 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut shutdown = None;
     loop {
         if closing && jobs.is_empty() {
-            #[cfg(unix)]
             if let Some(host) = agents.as_mut() {
                 host.shutdown().await;
             }
@@ -202,10 +192,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         protocol_version: PROTOCOL_VERSION, engine_version: env!("CARGO_PKG_VERSION").into(),
                         epoch: epoch.clone(), project_id: params.project_id.clone(),
                         capabilities: EngineCapabilities { cancellation: true, persistent_events: store.is_some(),
-                            idempotent_mutations: false, agent_sessions: {
-                                #[cfg(unix)] { agents.is_some() }
-                                #[cfg(not(unix))] { false }
-                            } },
+                            idempotent_mutations: false, agent_sessions: agents.is_some() },
                         max_frame_bytes: MAX_FRAME_BYTES, max_in_flight: MAX_IN_FLIGHT,
                         max_connection_requests: MAX_CONNECTION_REQUESTS,
                         default_timeout_ms: DEFAULT_TIMEOUT_MS, max_timeout_ms: MAX_TIMEOUT_MS,
@@ -221,7 +208,6 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     send(&mut output, failure(error::STALE_EPOCH)).await?; continue;
                 }
                 match Method::parse(&request.method) {
-                    #[cfg(unix)]
                     Some(Method::SessionBaseline) => {
                         let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
                         if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
@@ -243,7 +229,6 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             (id,response)
                         }));
                     }
-                    #[cfg(unix)]
                     Some(method @ (Method::SessionStart | Method::SessionAuthenticate | Method::SessionActive | Method::SessionPrompt | Method::SessionCancel | Method::SessionClose | Method::PermissionRespond)) => {
                         let Some(host) = agents.as_mut() else {
                             send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;

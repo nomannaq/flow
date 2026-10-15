@@ -1,5 +1,4 @@
 //! B07 manual exercise. Does not start an agent or change the main working tree.
-#[cfg(unix)]
 fn main() {
     use runtime::worktrees::{BaselineChoice, Error, Recovery, WorktreeManager};
     use std::path::Path;
@@ -78,9 +77,4 @@ fn main() {
         }
         std::process::exit(1);
     }
-}
-#[cfg(not(unix))]
-fn main() {
-    eprintln!("B07 worktree preparation currently targets Unix hosts");
-    std::process::exit(1);
 }
