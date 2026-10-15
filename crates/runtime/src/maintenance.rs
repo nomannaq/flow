@@ -72,7 +72,9 @@ pub(crate) fn released_process(workspace: &history::Workspace) -> Result<()> {
         loop {
             match rustix::process::test_kill_process_group(pid) {
                 Err(rustix::io::Errno::SRCH) => break,
-                Ok(()) if std::time::Instant::now() < deadline => {
+                // macOS can report EPERM while killed children are being
+                // reaped. Retry within the same bound; only ESRCH proves exit.
+                Ok(()) | Err(rustix::io::Errno::PERM) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(25))
                 }
                 other => {

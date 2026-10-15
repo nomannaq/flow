@@ -60,6 +60,41 @@ impl Fixture {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn shutdown_waits_for_killed_group_to_be_reaped() {
+    use std::os::unix::process::CommandExt;
+    let fixture = Fixture::new();
+    let workspace = fixture.workspace();
+    let path = workspace
+        .worktree_path
+        .parent()
+        .unwrap()
+        .join("agent-process.json");
+    let mut child = std::process::Command::new("/bin/sleep")
+        .arg("60")
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let mut record: ProcessRecord = read(&path).unwrap();
+    record.adapter_pid = Some(child.id());
+    record.state = "launched".into();
+    write(&path, &record).unwrap();
+    child.kill().unwrap();
+    // A zombie-only group returns EPERM on macOS until its parent reaps it.
+    let reaper = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        child.wait().unwrap();
+    });
+    let result = released_process(&workspace);
+    reaper.join().unwrap();
+    result.unwrap();
+    assert_eq!(
+        read::<ProcessRecord>(&path).unwrap().state,
+        "sdk_group_exited_external_writers_unverified"
+    );
+}
+
 #[test]
 fn explicit_recovery_preserves_newer_bytes_and_can_delete_only_closed_history() {
     let mut f = Fixture::new();
