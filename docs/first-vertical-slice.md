@@ -135,6 +135,50 @@ host acceptance work. No real model session was launched by this implementation.
 Update on 2026-10-15: B28 ran the normal strict Gradle suite successfully,
 including all three native B12 scenarios, plugin packaging and Plugin Verifier.
 The earlier wrapper-cache restriction was overcome through authorized local
-build access. See [B28 validation](native-engine-packaging.md#recorded-local-validation--2026-10-15)
+build access. See [B28 validation](native-engine-packaging.md)
 for artifact results and the intermediate native-test timeout; the real-Codex
 and clean-machine/native host evidence above is still pending.
+
+## Real-engine acceptance — 2026-10-15
+
+The user authorized the real-agent check. The engine extracted from the arm64
+plugin ZIP passed the existing B10 acceptance runner using `codex-acp` 0.5.2
+and the explicit `gpt-6-astra` model override. The original installed adapter
+was absent, so the matching [upstream release asset](https://github.com/zed-industries/codex-acp/releases/tag/v0.5.2)
+was downloaded to temporary storage. Its archive matched GitHub's published
+SHA-256 and its executable exactly matched B01's recorded binary checksum.
+No adapter was bundled into Flow or substituted with a newer release.
+
+The retained [real-engine evidence](b12-real-engine-evidence.json) records the
+Flow revision, archive/engine/adapter digests, actual session/turn/operation and
+content IDs, and exact pairs `absent → version 1\n` and
+`version 1\n → version 2\n`. Actual worktree bytes matched both requested states.
+The main project files, HEAD and index were unchanged, the final manifest matched
+the checkpoint before deliberate deletion, and session writer shutdown was
+verified. Two subsequent release-engine processes reopened identical historical
+pairs, including after deleting the owned live probe file; review started no
+agent. Scratch history and local paths remain in
+`integrations/jetbrains/build/b12-real-engine-evidence.json`.
+
+Both real operations report **ambiguous attribution** with `tool.observed`
+boundaries, stable reads and complete coverage. Their evidence explicitly retains
+`writerQuiescenceProven: false` and `safeToApply: false`. These are two observed
+intervals, not claims of atomic tool effects or permission to apply changes.
+
+**B12 remains open.** This real run submitted tasks over engine IPC. Native Swing
+submission, rendered/read-only diff presentation, a full IDE process restart,
+and real-agent preservation of dirty developer sentinels still need observed
+host evidence. Controlled native tests already exercise those sentinels; that
+does not turn them into real-agent host observations. Project disposal and plugin
+unload remain native lifecycle checks.
+
+A fresh committed project with staged, unstaged and untracked sentinels is ready
+for that check. Its project path, baseline evidence and verified adapter path are
+in `integrations/jetbrains/build/b12-native-host-session.json`. The pinned
+IU-253.33813.55 sandbox was launched with `-PflowBundledEngine=true`, without an
+engine executable override. The sandbox's adapter/model preferences were filled
+only where its settings file did not already exist. Follow steps 1–5 above with
+that project, then compare its developer files/HEAD/staged entries with the saved
+`before.json`. macOS reported Accessibility UI scripting disabled, so no visible
+UI actions or full IDE restart are recorded as having been performed by the
+assistant. This development sandbox does not replace clean-machine installation.

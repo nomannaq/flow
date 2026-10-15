@@ -24,6 +24,15 @@ The real-adapter runner requires its expected binary checksum and records the
 advertised version. Choosing another released adapter requires a new checksum and
 a complete rerun. Do not substitute an unpinned `npx ...@latest` invocation.
 
+Update — 2026-10-15: the [B12 real-engine acceptance](../first-vertical-slice.md#real-engine-acceptance--2026-10-15)
+retrieved the original v0.5.2 arm64 release archive from upstream. Its SHA-256
+`5ced8d2272925a3a15f4512cd30df17f9211605d9cd95ea830de4056be531c07`
+matched GitHub's published asset digest, and the extracted executable matched the
+B01 checksum above. This resolves the missing association between this sample
+and the upstream release asset; it is not publisher attestation or redistribution
+approval. [Retained evidence](../b12-real-engine-evidence.json) records both
+digests. Native plugin-unload and the remaining B12 UI checks stay open.
+
 ## ACP ownership and launch policy
 
 Use the SDK client/process APIs directly. The SDK owns the subprocess and its
