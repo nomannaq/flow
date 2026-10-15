@@ -1,5 +1,6 @@
 //! Stable ACP SDK client. Flow owns policy/state, the SDK owns messaging and
 //! adapter process groups. No client filesystem/terminal capabilities advertised.
+use crate::recorder::{Boundary, WorkspaceRecorder};
 use crate::worktrees::{BaselineChoice, Recovery, WorktreeManager};
 use agent_client_protocol::schema::{ProtocolVersion, v1 as acp};
 use agent_client_protocol::{
@@ -7,8 +8,8 @@ use agent_client_protocol::{
 };
 use history::{HistoryStore, Session, Turn};
 use protocol::{
-    AgentActivity, AgentCommand, AgentPermission, AgentStart, AgentView, MutationKey,
-    PermissionChoice, PermissionDecision, ProtocolStore, SessionId,
+    AgentActivity, AgentAuthenticate, AgentCommand, AgentPermission, AgentStart, AgentView,
+    MutationKey, PermissionChoice, PermissionDecision, ProtocolStore, SessionId,
 };
 use serde_json::json;
 use std::{
@@ -68,6 +69,9 @@ pub fn launch(arguments: impl Iterator<Item = std::ffi::OsString>) -> std::io::E
     let Some(executable) = arguments.next() else {
         return std::io::Error::other("missing adapter");
     };
+    if crate::maintenance::launched_process(Path::new(&workspace)).is_err() {
+        return std::io::Error::other("cannot persist adapter process ownership");
+    }
     std::process::Command::new(executable)
         .args(arguments)
         .current_dir(workspace)
@@ -123,12 +127,42 @@ struct State {
     turn: Option<String>,
     events: usize,
     bound: bool,
+    capture_failed: bool,
 }
 struct Shared {
     state: Mutex<State>,
     store: HistoryStore,
+    recorder: Arc<tokio::sync::Mutex<Option<WorkspaceRecorder>>>,
 }
 impl Shared {
+    async fn record(&self, boundary: Boundary) -> Result<(), Error> {
+        // The blocking job owns the guard even if an ACP callback is cancelled.
+        // Final reconciliation waits behind it before the workspace lease drops.
+        let mut recorder = self.recorder.clone().lock_owned().await;
+        let result = tokio::task::spawn_blocking(move || {
+            recorder.as_mut().map(|r| r.reconcile(boundary)).transpose()
+        })
+        .await
+        .map_err(|_| Error::internal_error())?;
+        match result {
+            Ok(Some(Some(id))) => {
+                self.state.lock().unwrap().view.recorded_operations += 1;
+                self.event(
+                    "workspace.recorded",
+                    &format!("Verified filesystem interval {id}; writer quiescence is unproven"),
+                    None,
+                    None,
+                )
+                .await
+            }
+            Ok(_) => Ok(()),
+            Err(_) => {
+                self.state.lock().unwrap().capture_failed = true;
+                let _ = self.event("workspace.captureIncomplete", "Workspace is unstable, exceeds capture limits, or could not be recorded. Last verified checkpoint retained; safe application is unavailable.", None, None).await;
+                Err(Error::internal_error())
+            }
+        }
+    }
     fn view(&self) -> AgentView {
         self.state.lock().unwrap().view.clone()
     }
@@ -158,10 +192,7 @@ impl Shared {
                 text: limited(text, 2048),
                 tool_call_id: tool.map(|s| limited(&s, 256)),
             };
-            if state.view.activity.len() == 100 {
-                state.view.activity.remove(0);
-            }
-            state.view.activity.push(activity.clone());
+            project_activity(&mut state.view.activity, activity.clone());
             (
                 state.view.session_id.clone().ok_or_else(invalid)?,
                 state.turn.clone(),
@@ -181,6 +212,7 @@ impl Shared {
 }
 enum Control {
     Prompt(String),
+    Authenticate(String),
     Cancel,
 }
 
@@ -198,6 +230,7 @@ impl AgentHost {
             shared: Arc::new(Shared {
                 state: Mutex::new(State::default()),
                 store,
+                recorder: Arc::new(tokio::sync::Mutex::new(None)),
             }),
             controls: None,
             stop: None,
@@ -220,8 +253,12 @@ impl AgentHost {
                 .any(|a| a.len() > 4096 || a.contains('\0'))
             || params.prompt.is_empty()
             || params.prompt.len() > 32 * 1024
-            || ![40, 64].contains(&params.commit.len())
-            || !params.commit.bytes().all(|c| c.is_ascii_hexdigit())
+            || if params.source_session_id.is_some() {
+                !params.writers_stopped || !params.commit.is_empty()
+            } else {
+                ![40, 64].contains(&params.commit.len())
+                    || !params.commit.bytes().all(|c| c.is_ascii_hexdigit())
+            }
             || params.auth_method.as_ref().is_some_and(|v| v.len() > 256)
         {
             return Err(invalid());
@@ -272,10 +309,30 @@ impl AgentHost {
         state.view.status = if cancel { "cancelling" } else { "running" }.into();
         Ok(())
     }
+    pub fn authenticate(&self, command: AgentAuthenticate) -> Result<(), Error> {
+        let mut state = self.shared.state.lock().unwrap();
+        if state.view.session_id.as_ref() != Some(&command.session_id)
+            || state.view.status != "authenticationRequired"
+            || !state.view.auth_methods.contains(&command.method_id)
+        {
+            return Err(invalid());
+        }
+        self.controls
+            .as_ref()
+            .ok_or_else(invalid)?
+            .try_send(Control::Authenticate(command.method_id))
+            .map_err(|_| invalid())?;
+        state.view.status = "authenticating".into();
+        Ok(())
+    }
     pub fn close(&self, session: &SessionId) -> Result<(), Error> {
         if self.view().session_id.as_ref() != Some(session) {
             return Err(invalid());
         }
+        if self.task.as_ref().is_none_or(|task| task.is_finished()) {
+            return Ok(());
+        }
+        self.shared.state.lock().unwrap().view.status = "closing".into();
         self.shared.clear_permissions();
         self.stop
             .as_ref()
@@ -338,6 +395,7 @@ async fn run_session(
 ) {
     let store = shared.store.clone();
     let commit = params.commit.clone();
+    let source = params.source_session_id.clone();
     let executable = PathBuf::from(&params.executable);
     let prepared = tokio::task::spawn_blocking(move || {
         use std::os::unix::fs::PermissionsExt;
@@ -353,16 +411,20 @@ async fn run_session(
             .as_str()
             .ok_or("Project root missing")?
             .to_owned();
-        let manager = WorktreeManager::open(Path::new(&root), store, Recovery::RefuseStale)
+        let manager = WorktreeManager::open(Path::new(&root), store.clone(), Recovery::RefuseStale)
             .map_err(|_| "Workspace ownership unavailable; inspect B07 recovery before retrying")?;
-        manager
-            .prepare(BaselineChoice::CleanCommit(commit))
-            .map_err(
-                |_| "Cannot prepare baseline; inspect retained worktree and repository constraints",
-            )
+        if let Some(source) = source {
+            crate::maintenance::continue_workspace(&store, &manager, source)
+                .map_err(|_| "Retained workspace is active, changed, or needs recovery. Close or recover it and verify all writers stopped before retrying.")
+        } else {
+            let prepared = manager.prepare(BaselineChoice::CleanCommit(commit))
+                .map_err(|_| "Cannot prepare baseline; inspect retained worktree and repository constraints")?;
+            let baseline = prepared.preparation.baseline.clone().unwrap();
+            Ok((prepared, baseline))
+        }
     })
     .await;
-    let prepared = match prepared {
+    let (prepared, baseline) = match prepared {
         Ok(Ok(prepared)) => prepared,
         Ok(Err(message)) => {
             let _ = shared
@@ -389,7 +451,7 @@ async fn run_session(
     let record = Session {
         id: session.clone(),
         workspace_id: workspace.id.clone(),
-        baseline: prepared.preparation.baseline.clone().unwrap(),
+        baseline,
         agent: "acp".into(),
         adapter_version: "initializing".into(),
         upstream_id: None,
@@ -414,10 +476,29 @@ async fn run_session(
         return;
     }
     shared.state.lock().unwrap().bound = true;
+    if let Some(source) = &params.source_session_id {
+        let source = source.clone();
+        let store = shared.store.clone();
+        let target = session.clone();
+        if database(move || store.agent_event(target, None, "starting".into(), "session.continued".into(), json!({"sourceSessionId":source,"newConversation":true,"writersStoppedAcknowledged":true}))).await.is_err() {
+            let _ = shared.event("session.error", "Cannot persist conversation provenance", None, Some("failed")).await;
+            return;
+        }
+    }
+    let mut process_prepared = false;
     let result = async {
+        let store = shared.store.clone();
+        let recorded_session = session.clone();
+        let recorder = tokio::task::spawn_blocking(move || WorkspaceRecorder::new(store, recorded_session))
+            .await.map_err(|_| Error::internal_error())?.map_err(|_| Error::internal_error())?;
+        *shared.recorder.lock().await = Some(recorder);
+        shared.record(Boundary::Start).await?;
         if *stop.borrow() {
             return Ok(());
         }
+        process_prepared = true;
+        let owned = workspace.clone();
+        tokio::task::spawn_blocking(move || crate::maintenance::preparing_process(&owned)).await.map_err(|_|Error::internal_error())?.map_err(|_|Error::internal_error())?;
         let engine = std::env::current_exe().map_err(|_| Error::internal_error())?;
         let agent = AcpAgent::new(
             AcpAgentConfig::new(engine)
@@ -436,21 +517,56 @@ async fn run_session(
             controls,
         );
         tokio::pin!(client);
-        tokio::select! {
-            result=&mut client=>result,
-            _=stop.changed()=>{
-                shared.clear_permissions();
-                // Dropping the SDK connection terminates its Unix process group.
-                Ok(())
+        loop {
+            tokio::select! {
+                result=&mut client=>break result,
+                _=stop.changed()=>{
+                    shared.clear_permissions();
+                    let _ = shared.event("session.closing", "Stopping the agent and reconciling its workspace", None, Some("closing")).await;
+                    // Dropping the SDK connection terminates its Unix process group.
+                    break Ok(());
+                }
+                _=tokio::time::sleep(Duration::from_millis(100))=>{
+                    if shared.state.lock().unwrap().capture_failed {break Err(Error::internal_error());}
+                }
             }
         }
     }
     .await;
+    if let Err(error) = &result {
+        let _ = shared
+            .event("session.diagnostic", diagnostic(error), None, None)
+            .await;
+    }
+    let owned = workspace.clone();
+    let released = !process_prepared
+        || tokio::task::spawn_blocking(move || crate::maintenance::released_process(&owned))
+            .await
+            .is_ok_and(|r| r.is_ok());
+    if !released {
+        prepared.quarantine();
+    }
     shared.clear_permissions();
-    let failed = result.is_err(); // Never expose raw ACP errors (may include credentials/stderr).
+    let mut failed = !released || result.is_err() || shared.state.lock().unwrap().capture_failed;
     let interrupted = !failed && shared.state.lock().unwrap().turn.is_some();
+    // The SDK connection has dropped and killed its process group. Observe any
+    // final/failed/background effects before releasing writer ownership.
+    if shared
+        .record(Boundary::Closed(if failed {
+            history::OperationStatus::Failed
+        } else if interrupted {
+            history::OperationStatus::Interrupted
+        } else {
+            history::OperationStatus::Completed
+        }))
+        .await
+        .is_err()
+    {
+        failed = true;
+    }
+    *shared.recorder.lock().await = None;
     let _=shared.event(if failed {"session.error"} else {"session.closed"},
-        if failed {"Agent connection failed or timed out. Check native login, model support and adapter configuration."} else {"Session closed; workspace retained"},None,
+        if !released {"Adapter shutdown could not be verified. Writer ownership is retained for explicit history recovery; do not start another writer until all previous processes are stopped."} else if failed {"Agent connection failed or timed out. Check native login, model support and adapter configuration."} else {"Session closed; workspace retained"},None,
         Some(if failed {"failed"} else if interrupted {"interrupted"} else {"closed"})).await;
     // PreparedWorktree remains alive through SDK connection teardown.
     drop(prepared);
@@ -483,6 +599,9 @@ async fn drive<A: ConnectTo<Client>>(
             let text=if let Some(status)=value["status"].as_str() { format!("{text} ({status})") } else {text.to_owned()};
             let tool=value["toolCallId"].as_str().map(str::to_owned);
             updates.event(kind,&text,tool.clone(),None).await?;
+            if matches!(native_kind, "tool_call" | "tool_call_update") && let Some(id) = tool.clone() {
+                updates.record(Boundary::Tool { id, terminal: matches!(value["status"].as_str(), Some("completed" | "failed")), failed: value["status"] == "failed" }).await?;
+            }
             if value["content"].as_array().is_some_and(|items| items.iter().any(|v| v["type"]=="diff")) {
                 updates.event("workspace.changeReported","Agent reported a diff; filesystem effect is not yet verified",tool,None).await?;
             }
@@ -492,7 +611,7 @@ async fn drive<A: ConnectTo<Client>>(
             if permissions.view().upstream_session_id.as_deref()!=Some(&request.session_id.to_string()) { return Err(invalid()); }
             let request_id=id("permission")?;
             let options:Vec<_>=request.options.iter().filter(|p| p.kind==acp::PermissionOptionKind::AllowOnce || p.kind==acp::PermissionOptionKind::RejectOnce)
-                .filter(|p| p.option_id.to_string().len()<=128).take(8).map(|p| PermissionChoice{id:p.option_id.to_string(),name:limited(&p.name,128)}).collect();
+                .filter(|p| p.option_id.to_string().len()<=128).take(8).map(|p| PermissionChoice{allow_once:p.kind==acp::PermissionOptionKind::AllowOnce,id:p.option_id.to_string(),name:limited(&p.name,128)}).collect();
             let tool=serde_json::to_value(&request.tool_call).map_err(|_| invalid())?;
             let title=limited(&format!("{}{}",tool["title"].as_str().unwrap_or("Agent requests permission"),
                 tool.get("rawInput").filter(|v| !v.is_null()).map(|v| format!("\n{v}")).unwrap_or_default()),2048);
@@ -514,37 +633,58 @@ async fn drive<A: ConnectTo<Client>>(
             responder.respond(acp::RequestPermissionResponse::new(outcome))
         },agent_client_protocol::on_receive_request!())
         .connect_with(agent,move |connection:ConnectionTo<Agent>| async move {
-            let setup=async {
-                let initialized=connection.send_request(acp::InitializeRequest::new(ProtocolVersion::V1)).block_task().await?;
-                if initialized.protocol_version!=ProtocolVersion::V1 { return Err(invalid()); }
-                let capabilities=serde_json::to_value(&initialized.agent_capabilities).map_err(|_| invalid())?;
-                let info=serde_json::to_value(&initialized.agent_info).map_err(|_| invalid())?;
-                let auth:Vec<String>=initialized.auth_methods.iter().map(|m| m.id().to_string()).collect();
-                if serde_json::to_vec(&capabilities).map_err(|_| invalid())?.len()>8192 || serde_json::to_vec(&info).map_err(|_| invalid())?.len()>4096 || auth.len()>32 || auth.iter().any(|s| s.len()>256) {return Err(invalid());}
-                { let mut state=shared.state.lock().unwrap(); state.view.capabilities=capabilities;state.view.agent_info=info;state.view.auth_methods=auth.clone(); }
-                if let Some(method)=&params.auth_method {
-                    if !auth.contains(method) { return Err(invalid()); }
-                    connection.send_request(acp::AuthenticateRequest::new(method.clone())).block_task().await?;
+            let initialized=tokio::time::timeout(SETUP_TIMEOUT,
+                connection.send_request(acp::InitializeRequest::new(ProtocolVersion::V1)).block_task())
+                .await.map_err(|_| Error::internal_error())??;
+            if initialized.protocol_version!=ProtocolVersion::V1 { return Err(invalid()); }
+            let capabilities=serde_json::to_value(&initialized.agent_capabilities).map_err(|_| invalid())?;
+            let info=serde_json::to_value(&initialized.agent_info).map_err(|_| invalid())?;
+            // Terminal authentication needs a separate host capability we do not advertise.
+            let auth:Vec<String>=initialized.auth_methods.iter().filter(|m| matches!(m, acp::AuthMethod::Agent(_))).map(|m| m.id().to_string()).collect();
+            if serde_json::to_vec(&capabilities).map_err(|_| invalid())?.len()>8192 || serde_json::to_vec(&info).map_err(|_| invalid())?.len()>4096 || auth.len()>32 || auth.iter().any(|s| s.len()>256) {return Err(invalid());}
+            let compatibility = compatibility(&info);
+            { let mut state=shared.state.lock().unwrap(); state.view.capabilities=capabilities;state.view.agent_info=info;state.view.auth_methods=auth.clone(); state.view.compatibility=compatibility.into(); }
+            shared.event("adapter.compatibility", compatibility, None, None).await?;
+            let mut method = params.auth_method;
+            let upstream = loop {
+                let result = async {
+                    if let Some(method) = method.take() {
+                        if !auth.contains(&method) { return Err(invalid()); }
+                        shared.event("session.authenticating", "Complete authentication in the adapter's native login flow. Flow does not collect credentials.", None, Some("authenticating")).await?;
+                        connection.send_request(acp::AuthenticateRequest::new(method)).block_task().await?;
+                    }
+                    shared.state.lock().unwrap().view.status = "starting".into();
+                    connection.send_request(acp::NewSessionRequest::new(workspace.clone())).block_task().await
+                };
+                let result = tokio::time::timeout(Duration::from_secs(120), result).await.map_err(|_| Error::internal_error())?;
+                match result {
+                    Ok(session) => break session.session_id,
+                    Err(error) if error.code == Error::auth_required().code && !auth.is_empty() => {
+                        shared.event("session.authenticationRequired", "Authentication required or rejected. Select an advertised method and retry, or close this session.", None, Some("authenticationRequired")).await?;
+                        match tokio::time::timeout(Duration::from_secs(300), commands.recv()).await {
+                            Ok(Some(Control::Authenticate(next))) => method=Some(next),
+                            _ => return Err(Error::auth_required()),
+                        }
+                    }
+                    Err(error) => return Err(error),
                 }
-                let session=connection.send_request(acp::NewSessionRequest::new(workspace)).block_task().await?;
-                let upstream=session.session_id.to_string();
-                {
-                    let mut state=shared.state.lock().unwrap();
-                    if upstream.len()>256 || state.view.upstream_session_id.as_ref().is_some_and(|id| id!=&upstream) { return Err(invalid()); }
-                    state.view.upstream_session_id=Some(upstream.clone());
-                }
-                let view=shared.view(); let store=shared.store.clone();
-                database(move || store.bind_agent(view.session_id.unwrap(),upstream,view.agent_info["version"].as_str().unwrap_or("unknown").to_owned(),json!({"agent":view.agent_info,"capabilities":view.capabilities,"authMethods":view.auth_methods}))).await?;
-                Ok::<_,Error>(session.session_id)
             };
-            let upstream=tokio::time::timeout(SETUP_TIMEOUT,setup).await.map_err(|_| Error::internal_error())??;
+            let upstream_text=upstream.to_string();
+            {
+                let mut state=shared.state.lock().unwrap();
+                if upstream_text.len()>256 || state.view.upstream_session_id.as_ref().is_some_and(|id| id!=&upstream_text) { return Err(invalid()); }
+                state.view.upstream_session_id=Some(upstream_text.clone());
+            }
+            let view=shared.view(); let store=shared.store.clone();
+            database(move || store.bind_agent(view.session_id.unwrap(),upstream_text,view.agent_info["version"].as_str().unwrap_or("unknown").to_owned(),json!({"agent":view.agent_info,"capabilities":view.capabilities,"authMethods":view.auth_methods}))).await?;
             let mut prompt=params.prompt;
             loop {
                 let turn=id("turn")?; let store=shared.store.clone(); let session=shared.view().session_id.unwrap();
                 let record=Turn{id:turn.clone(),session_id:session,prompt_provenance:"explicit IDE prompt".into(),upstream_id:None,status:"running".into(),created_at_ms:now()};
                 let key=MutationKey::try_from(format!("{turn}-create")).unwrap();
                 database(move || store.create_turn(key,record)).await?;
-                shared.state.lock().unwrap().turn=Some(turn);
+                shared.state.lock().unwrap().turn=Some(turn.clone());
+                shared.record(Boundary::TurnStart(turn)).await?;
                 shared.event("turn.started",&prompt,None,Some("running")).await?;
                 let response=connection.send_request(acp::PromptRequest::new(upstream.clone(),vec![acp::ContentBlock::Text(acp::TextContent::new(prompt))])).block_task();
                 tokio::pin!(response);
@@ -562,10 +702,108 @@ async fn drive<A: ConnectTo<Client>>(
                 }?;
                 shared.clear_permissions();
                 let cancelled=result.stop_reason==acp::StopReason::Cancelled;
-                shared.event("turn.completed",if cancelled {"Turn cancelled; partial changes retained"} else {"Turn finished; changes are not yet recorded or applied"},None,Some(if cancelled {"cancelled"} else {"completed"})).await?;
+                shared.record(Boundary::TurnEnd(if cancelled {history::OperationStatus::Interrupted} else {history::OperationStatus::Completed})).await?;
+                shared.event("turn.completed",if cancelled {"Turn cancelled; partial effects reconciled"} else {"Turn finished; observed changes recorded, not applied. Background writers may still be active."},None,Some(if cancelled {"cancelled"} else {"completed"})).await?;
                 shared.state.lock().unwrap().turn=None;
                 shared.event("session.ready","Ready for a follow-up",None,Some("ready")).await?;
-                match commands.recv().await { Some(Control::Prompt(next))=>prompt=next,_=>return Ok(()) }
+                loop {
+                    tokio::select! {
+                        command=commands.recv()=>match command { Some(Control::Prompt(next))=>{prompt=next;break},_=>return Ok(()) },
+                        _=tokio::time::sleep(Duration::from_secs(2))=>shared.record(Boundary::Idle).await?,
+                    }
+                }
             }
         }).await
+}
+
+/// UI projection only. The durable event stream still contains individual chunks.
+fn project_activity(items: &mut Vec<AgentActivity>, activity: AgentActivity) {
+    if activity.kind == "message.delta"
+        && let Some(previous) = items.last_mut()
+        && previous.kind == activity.kind
+        && previous.text.len() + activity.text.len() <= 8192
+    {
+        previous.text.push_str(&activity.text);
+    } else {
+        items.push(activity);
+    }
+    while items.len() > 100 || items.iter().map(|a| a.text.len()).sum::<usize>() > 96 * 1024 {
+        items.remove(0);
+    }
+}
+fn compatibility(info: &serde_json::Value) -> &'static str {
+    if info["name"] == "codex-acp" && info["version"] == "0.5.2" {
+        "Codex ACP 0.5.2 matches the B01 experiment's reported version. Binary provenance is not verified. Flow supports text tasks and one-time permissions; upstream resume, attachments, and MCP context are not available yet."
+    } else {
+        "Unverified adapter release: no recorded Flow compatibility result for this reported name/version. Validate with the opt-in Codex acceptance check. Flow supports text tasks and one-time permissions; upstream resume, attachments, and MCP context are not available yet."
+    }
+}
+/// Only static messages cross into durable history; provider error data can contain secrets.
+fn diagnostic(error: &Error) -> &'static str {
+    let detail = format!(
+        "{} {}",
+        error.message,
+        error
+            .data
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default()
+    )
+    .to_ascii_lowercase();
+    if error.code == Error::auth_required().code
+        || detail.contains("401")
+        || detail.contains("unauthorized")
+    {
+        "Authentication failed. Check the adapter's native login, then start a new conversation; Flow does not store provider credentials."
+    } else if detail.contains("not supported") || detail.contains("model") {
+        "The provider rejected the model or configuration. Choose a model supported by your login and retry in a new conversation."
+    } else {
+        "Adapter request failed or timed out. Check connectivity and adapter configuration. Raw provider errors are omitted to protect credentials."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn stream_projection_coalesces_without_merging_turns_and_bounds_wire_size() {
+        let chunk = |text: &str| AgentActivity {
+            kind: "message.delta".into(),
+            text: text.into(),
+            tool_call_id: None,
+        };
+        let mut items = Vec::new();
+        project_activity(&mut items, chunk("Hello "));
+        project_activity(&mut items, chunk("world"));
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].text, "Hello world");
+        project_activity(
+            &mut items,
+            AgentActivity {
+                kind: "turn.completed".into(),
+                ..chunk("")
+            },
+        );
+        project_activity(&mut items, chunk("Next"));
+        assert_eq!(items.len(), 3);
+        for _ in 0..1000 {
+            project_activity(&mut items, chunk(&"\0".repeat(2048)));
+        }
+        assert!(items.len() <= 100);
+        assert!(serde_json::to_vec(&items).unwrap().len() < 700_000);
+    }
+    #[test]
+    fn profile_is_explicitly_uncertified_and_errors_are_redacted() {
+        assert!(
+            compatibility(&json!({"name":"codex-acp","version":"0.5.2"}))
+                .contains("provenance is not verified")
+        );
+        assert!(
+            compatibility(&json!({"name":"codex-acp","version":"999"})).starts_with("Unverified")
+        );
+        let mut error = Error::internal_error();
+        error.data = Some(json!({"details":"401 Unauthorized private-fixture-token"}));
+        assert!(diagnostic(&error).contains("Authentication failed"));
+        assert!(!diagnostic(&error).contains("private-fixture-token"));
+    }
 }
