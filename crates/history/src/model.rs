@@ -244,3 +244,34 @@ pub(crate) fn json<T: Serialize>(value: &T) -> Result<String> {
 pub(crate) fn decode<T: serde::de::DeserializeOwned>(s: &str) -> Result<T> {
     serde_json::from_str(s).map_err(|_| Error::CorruptMetadata)
 }
+
+/// Host writes are authorized one at a time after these preimages are durable.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyFile {
+    #[serde(default)]
+    pub authorized: bool,
+    pub path: String,
+    pub before: Option<FileEntry>,
+    pub after: Option<FileEntry>,
+    pub status: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyJournal {
+    pub id: String,
+    pub candidate_id: ContentId,
+    pub current_id: ContentId,
+    pub root: PathBuf,
+    pub head: String,
+    pub index_digest: ContentId,
+    #[serde(default)]
+    pub rollback_fingerprint: Option<(String, ContentId)>,
+    pub files: Vec<ApplyFile>,
+    pub status: String,
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub document_stamps: BTreeMap<String, u64>,
+    pub superseded_by: Option<String>,
+    pub resolution_digest: Option<ContentId>,
+}

@@ -72,7 +72,7 @@ fn validate_source(conn: &Connection, candidate: &Candidate) -> Result<()> {
     Ok(())
 }
 
-fn review(conn: &Connection, id: &ContentId) -> Result<CandidateReview> {
+pub(super) fn review(conn: &Connection, id: &ContentId) -> Result<CandidateReview> {
     let candidate: Candidate = load_record(
         conn,
         "SELECT record FROM candidates WHERE id=?1",
@@ -103,6 +103,19 @@ fn review(conn: &Connection, id: &ContentId) -> Result<CandidateReview> {
 }
 
 impl HistoryStore {
+    pub fn reset_candidate_review(&self, id: ContentId) -> Result<()> {
+        self.call(move |db| {
+            db.require_write(0)?;
+            if db.conn.execute(
+                "UPDATE candidates SET decision='pending' WHERE id=?1 AND decision<>'rejected'",
+                [id.as_str()],
+            )? != 1
+            {
+                return Err(Error::Conflict);
+            }
+            Ok(())
+        })
+    }
     pub fn content_bytes(&self, id: ContentId) -> Result<Vec<u8>> {
         self.call(move |db| {
             let size = db

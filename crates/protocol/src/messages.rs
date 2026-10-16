@@ -65,6 +65,31 @@ pub enum JsonRpc {
 /// future methods produce METHOD_NOT_FOUND rather than a JSON parse failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Method {
+    #[serde(rename = "apply.plan")]
+    ApplyPlan,
+    #[serde(rename = "apply.get")]
+    ApplyGet,
+    #[serde(rename = "apply.list")]
+    ApplyList,
+    #[serde(rename = "apply.preview")]
+    ApplyPreview,
+    #[serde(rename = "apply.resolve")]
+    ApplyResolve,
+    #[serde(rename = "apply.begin")]
+    ApplyBegin,
+    #[serde(rename = "apply.authorize")]
+    ApplyAuthorize,
+    #[serde(rename = "apply.receipt")]
+    ApplyReceipt,
+    #[serde(rename = "apply.finish")]
+    ApplyFinish,
+    #[serde(rename = "apply.cancel")]
+    ApplyCancel,
+    #[serde(rename = "apply.reconcile")]
+    ApplyReconcile,
+    #[serde(rename = "apply.rollback")]
+    ApplyRollback,
+
     #[serde(rename = "candidates.prepare")]
     CandidatePrepare,
     #[serde(rename = "candidates.get")]
@@ -123,6 +148,19 @@ pub enum Method {
 impl Method {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
+            "apply.plan" => Some(Self::ApplyPlan),
+            "apply.get" => Some(Self::ApplyGet),
+            "apply.list" => Some(Self::ApplyList),
+            "apply.preview" => Some(Self::ApplyPreview),
+            "apply.resolve" => Some(Self::ApplyResolve),
+            "apply.begin" => Some(Self::ApplyBegin),
+            "apply.authorize" => Some(Self::ApplyAuthorize),
+            "apply.receipt" => Some(Self::ApplyReceipt),
+            "apply.finish" => Some(Self::ApplyFinish),
+            "apply.cancel" => Some(Self::ApplyCancel),
+            "apply.reconcile" => Some(Self::ApplyReconcile),
+            "apply.rollback" => Some(Self::ApplyRollback),
+
             "candidates.prepare" => Some(Self::CandidatePrepare),
             "candidates.get" => Some(Self::CandidateGet),
             "candidates.files" => Some(Self::CandidateFiles),

@@ -18,6 +18,10 @@ pub const MAX_TIMEOUT_MS: u64 = 30_000;
 #[derive(schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Contract {
+    pub apply_prepare: ApplyPrepare,
+    pub apply_query: ApplyQuery,
+    pub apply_action: ApplyAction,
+    pub apply_resolve: ApplyResolve,
     pub candidate_prepare: CandidatePrepare,
     pub candidate_query: CandidateQuery,
     pub candidate_decision: CandidateDecision,

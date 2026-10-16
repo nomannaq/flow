@@ -14,3 +14,5 @@ pub mod worktrees;
 #[allow(dead_code)]
 #[path = "../../../tests/support/repository.rs"]
 mod test_repository;
+
+pub mod application;

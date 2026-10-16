@@ -59,9 +59,14 @@ fn main() {
     let output = std::env::args()
         .nth(1)
         .expect("usage: first_slice_bench OUTPUT.json");
+    let application = std::env::args().any(|arg| arg == "--apply");
     let root = tempfile::tempdir().unwrap();
     let mut fixtures = Vec::new();
-    for count in [1000, 10000, 100000] {
+    for count in if application {
+        vec![1000]
+    } else {
+        vec![1000, 10000, 100000]
+    } {
         let repo = root.path().join(format!("repo-{count}"));
         fs::create_dir(&repo).unwrap();
         git(&repo, &["-c", "init.templateDir=", "init", "--quiet"]);
@@ -129,7 +134,8 @@ fn main() {
         let before = store.storage_report().unwrap().bytes;
         let mut recorder = Recorder::new(store.clone(), session.clone()).unwrap();
         let mut captures = Vec::new();
-        for generation in 0..220 {
+        let capture_rounds = if application { 20_u64 } else { 220 };
+        for generation in 0..capture_rounds {
             for i in 0..if generation < 20 { 10 } else { 1 } {
                 fs::write(
                     workspace.worktree_path.join(filename(i)),
@@ -174,7 +180,7 @@ fn main() {
             .collect();
         let operations = store.operations(session.clone(), 0, 20).unwrap();
         assert_eq!(operations.items.len(), 20);
-        assert!(operations.next.is_some());
+        assert_eq!(operations.next.is_some(), capture_rounds > 20);
         let change = store
             .get_operation(operations.items[0].id.clone())
             .unwrap()
@@ -213,7 +219,7 @@ fn main() {
         });
         assert_eq!(
             store
-                .operations(session.clone(), 200, 100)
+                .operations(session.clone(), capture_rounds.saturating_sub(20), 100)
                 .unwrap()
                 .items
                 .len(),
@@ -223,14 +229,96 @@ fn main() {
         drop(recorder);
         drop(prepared);
         drop(manager);
+        let application_stats = application.then(|| application_bench(&store, &session, &repo));
         drop(store);
         let (_, open_ms) = measure(|| drop(HistoryStore::open(&repo, &data).unwrap()));
         let capture_stats = stats(captures);
-        fixtures.push(json!({"files":count,"bytesPerFile":255,"status":"supported","firstScanMs":first_ms,"warmFullScan":stats(scans),"tenFileReconciliationAndDurableCapture":capture_stats,"incremental500msP95Met":capture_stats["p95Ms"].as_f64().unwrap()<500.,"operationFirstPage":stats(access),"smallHistoricalPair":stats(previews),"longHistoryOperations":220,"storageGrowthBytes":growth,"replayEvents":replayed,"replayMs":replay_ms,"reopenWithIntegrityAuditMs":open_ms}));
+        fixtures.push(json!({"files":count,"bytesPerFile":255,"status":"supported","firstScanMs":first_ms,"warmFullScan":stats(scans),"tenFileReconciliationAndDurableCapture":capture_stats,"incremental500msP95Met":capture_stats["p95Ms"].as_f64().unwrap()<500.,"operationFirstPage":stats(access),"smallHistoricalPair":stats(previews),"longHistoryOperations":capture_rounds,"storageGrowthBytes":growth,"replayEvents":replayed,"replayMs":replay_ms,"reopenWithIntegrityAuditMs":open_ms,"application":application_stats}));
     }
-    let report = json!({"schemaVersion":1,"mode":"offline-owned-fixtures","machine":std::env::var("FLOW_BENCH_MACHINE").unwrap_or_else(|_|"unlabelled reference machine".into()),"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,"logicalCpus":std::thread::available_parallelism().unwrap().get(),"cacheState":"first capture follows fixture creation; warm runs reuse OS caches; caches were not flushed","exclusions":[".git control data only"],"fixtures":fixtures,"notMeasured":["full IDE process startup","visible UI responsiveness","real adapter latency","100k-file complete capture (unsupported)"]});
+    let report = json!({"schemaVersion":1,"mode":"offline-owned-fixtures","applicationEnabled":application,"machine":std::env::var("FLOW_BENCH_MACHINE").unwrap_or_else(|_|"unlabelled reference machine".into()),"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,"logicalCpus":std::thread::available_parallelism().unwrap().get(),"cacheState":"first capture follows fixture creation; warm runs reuse OS caches; caches were not flushed","exclusions":[".git control data only"],"fixtures":fixtures,"notMeasured":["full IDE process startup","visible UI responsiveness","real adapter latency","100k-file complete capture (unsupported)"]});
     fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!(
         "B27 offline baseline written; unsupported fixtures were not counted as complete captures."
     );
+}
+
+/// Measures planning/authorization/durable receipts and an owned disk writer.
+/// The separate native scenario measures IntelliJ VFS/document writes.
+fn application_bench(store: &HistoryStore, session: &SessionId, root: &Path) -> Value {
+    use protocol::{CandidateDecision, CandidatePrepare, Method};
+    let c = runtime::review::prepare(
+        store.clone(),
+        CandidatePrepare {
+            session_id: session.clone(),
+            writers_stopped: true,
+        },
+    )
+    .unwrap();
+    runtime::review::decide(
+        store.clone(),
+        CandidateDecision {
+            candidate_id: c.id.as_str().into(),
+            accept: true,
+            writers_stopped: true,
+        },
+    )
+    .unwrap();
+    let host = runtime::application::ApplyHost::default();
+    let call = |method, params| host.request(store.clone(), method, params).unwrap();
+    let mut planning = Vec::new();
+    let mut applying = Vec::new();
+    let mut rollback = Vec::new();
+    for n in 0..5 {
+        let (j, time) = measure(|| {
+            call(
+                Method::ApplyPlan,
+                json!({"planId":format!("benchmark-apply-{n}"),"candidateId":c.id,"writersStopped":true}),
+            )
+        });
+        planning.push(time);
+        let action = json!({"planId":j["id"],"candidateId":c.id,"writersStopped":true});
+        let count = j["files"].as_array().unwrap().len();
+        assert_eq!(count, 10);
+        for undo in [false, true] {
+            let (_, elapsed) = measure(|| {
+                call(
+                    if undo {
+                        Method::ApplyRollback
+                    } else {
+                        Method::ApplyBegin
+                    },
+                    action.clone(),
+                );
+                let indices: Vec<_> = if undo {
+                    (0..count).rev().collect()
+                } else {
+                    (0..count).collect()
+                };
+                for i in indices {
+                    let q = json!({"planId":j["id"],"fileIndex":i,"rollback":undo});
+                    let t = call(Method::ApplyAuthorize, q.clone());
+                    let path = root.join(t["path"].as_str().unwrap());
+                    let bytes = t["replacement"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|b| b.as_u64().unwrap() as u8)
+                        .collect::<Vec<_>>();
+                    fs::write(&path, bytes).unwrap();
+                    fs::File::open(path).unwrap().sync_all().unwrap();
+                    call(Method::ApplyReceipt, q);
+                }
+                call(
+                    Method::ApplyFinish,
+                    json!({"planId":j["id"],"rollback":undo}),
+                );
+            });
+            if undo {
+                rollback.push(elapsed)
+            } else {
+                applying.push(elapsed)
+            }
+        }
+    }
+    json!({"fixture":"B27 1000 files (255 baseline bytes/file) / ten changed files / 20 retained operations","samples":5,"writer":"owned Rust disk fixture with fsync; native IDE tested separately","planning":stats(planning),"applyIncludingJournalAndReconciliation":stats(applying),"conditionalRollback":stats(rollback),"textConflictPolicy":"concurrent same-path changes require native merge; no heuristic auto-merge"})
 }

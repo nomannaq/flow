@@ -15,6 +15,7 @@ pub struct StorageReport {
     pub writable: bool,
     pub reason: Option<String>,
     pub pending_mutations: u64,
+    pub pending_applications: u64,
     pub pending_deletions: u64,
     pub holds: u64,
     pub unlinked_snapshots: u64,
@@ -28,6 +29,7 @@ impl Database {
             |r| uint(r, 0),
         )?;
         let pending_mutations = self.conn.query_row("SELECT COUNT(*) FROM mutations WHERE json_extract(receipt,'$.status') NOT IN ('succeeded','failed')", [], |r| uint(r, 0))?;
+        let pending_applications = self.conn.query_row("SELECT COUNT(*) FROM apply_journals WHERE json_extract(record,'$.status') IN ('applying','rollingBack','recoveryRequired','recoveryConflict')", [], |r| uint(r,0))?;
         let holds = self
             .conn
             .query_row("SELECT COUNT(*) FROM history_holds", [], |r| uint(r, 0))?;
@@ -36,10 +38,11 @@ impl Database {
             [],
             |r| uint(r, 0),
         )?;
-        let unlinked_snapshots = self.conn.query_row("SELECT COUNT(*) FROM snapshots s WHERE NOT EXISTS(SELECT 1 FROM sessions WHERE baseline=s.id) AND NOT EXISTS(SELECT 1 FROM operations WHERE before_id=s.id OR after_id=s.id) AND NOT EXISTS(SELECT 1 FROM candidates WHERE baseline_id=s.id OR source_id=s.id OR result_id=s.id)", [], |r| uint(r, 0))?;
+        let unlinked_snapshots = self.conn.query_row("SELECT COUNT(*) FROM snapshots s WHERE NOT EXISTS(SELECT 1 FROM sessions WHERE baseline=s.id) AND NOT EXISTS(SELECT 1 FROM operations WHERE before_id=s.id OR after_id=s.id) AND NOT EXISTS(SELECT 1 FROM candidates WHERE baseline_id=s.id OR source_id=s.id OR result_id=s.id) AND NOT EXISTS(SELECT 1 FROM apply_journals WHERE current_id=s.id)", [], |r| uint(r, 0))?;
         let bytes = storage_bytes(&self.directory)?;
         let reason = self.damage.clone().or_else(|| {
             if self.pending_at_open { Some("Unresolved mutations or history holds require a recovery handler; nothing was replayed".into()) }
+            else if holds > 0 || pending_applications > 0 { Some("Application or retained history requires recovery; inspect the application journal".into()) }
             else if bytes.saturating_add(WRITE_RESERVE) > budget_bytes { Some(Error::BudgetExceeded.to_string()) }
             else { None }
         });
@@ -49,12 +52,13 @@ impl Database {
             writable: reason.is_none(),
             reason,
             pending_mutations,
+            pending_applications,
             pending_deletions,
             holds,
             unlinked_snapshots,
         })
     }
-    fn require_healthy(&self) -> Result<()> {
+    pub(super) fn require_healthy(&self) -> Result<()> {
         if self.damage.is_some() {
             return Err(Error::ReadOnly);
         }
@@ -63,7 +67,7 @@ impl Database {
     pub(super) fn require_write(&self, additional: u64) -> Result<()> {
         self.require_healthy()?;
         let report = self.storage_report()?;
-        if self.pending_at_open {
+        if self.pending_at_open || report.holds > 0 || report.pending_applications > 0 {
             return Err(Error::ReadOnly);
         }
         if report
@@ -201,7 +205,8 @@ impl HistoryStore {
             db.conn
                 .execute("DELETE FROM history_holds WHERE id=?1", [id])?;
             let report = db.storage_report()?;
-            db.pending_at_open = report.pending_mutations > 0 || report.holds > 0;
+            db.pending_at_open =
+                report.pending_mutations > 0 || report.holds > 0 || report.pending_applications > 0;
             Ok(())
         })
     }
@@ -234,7 +239,8 @@ impl HistoryStore {
             write_receipt(&tx, &resolved)?;
             tx.commit()?;
             let report = db.storage_report()?;
-            db.pending_at_open = report.pending_mutations > 0 || report.holds > 0;
+            db.pending_at_open =
+                report.pending_mutations > 0 || report.holds > 0 || report.pending_applications > 0;
             Ok(())
         })
     }
