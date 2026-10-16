@@ -116,3 +116,67 @@ pub struct HistoryContentIds {
     pub before: Option<String>,
     pub after: Option<String>,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CandidatePrepare {
+    pub session_id: SessionId,
+    pub writers_stopped: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CandidateQuery {
+    pub candidate_id: String,
+    pub after: Option<String>,
+    #[serde(default)]
+    pub file_index: usize,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CandidateDecision {
+    pub candidate_id: String,
+    pub accept: bool,
+    pub writers_stopped: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CandidateCheck {
+    pub candidate_id: String,
+    pub check_id: crate::MutationKey,
+    pub command: Vec<String>,
+    pub timeout_seconds: u64,
+    pub writers_stopped: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyPrepare {
+    pub plan_id: crate::MutationKey,
+    pub candidate_id: String,
+    pub writers_stopped: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyQuery {
+    pub plan_id: crate::MutationKey,
+    #[serde(default)]
+    pub file_index: usize,
+    #[serde(default)]
+    pub rollback: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyAction {
+    pub plan_id: crate::MutationKey,
+    pub candidate_id: String,
+    pub writers_stopped: bool,
+    #[serde(default)]
+    pub document_stamps: std::collections::BTreeMap<String, u64>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyResolve {
+    pub plan_id: crate::MutationKey,
+    pub file_index: usize,
+    pub content: String,
+}

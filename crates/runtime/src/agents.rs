@@ -848,4 +848,42 @@ mod tests {
         assert!(diagnostic(&error).contains("Authentication failed"));
         assert!(!diagnostic(&error).contains("private-fixture-token"));
     }
+    #[test]
+    fn b26_malformed_acp_corpus_and_seeded_updates_never_reach_projection() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/adversarial/corpus.json"
+        ))
+        .unwrap();
+        for (case, value) in corpus["malformedAcpUpdates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            assert!(
+                serde_json::from_value::<acp::SessionNotification>(value.clone()).is_err(),
+                "corpus case={case}"
+            );
+        }
+        let mut seed = 26u64;
+        for case in 0..512 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let mut update = json!({"sessionId":"fixture", "update":{"sessionUpdate":"agent_message_chunk", "content":{"type":"text", "text":"bounded"}}});
+            assert!(serde_json::from_value::<acp::SessionNotification>(update.clone()).is_ok());
+            match seed % 4 {
+                0 => update["sessionId"] = json!(seed),
+                1 => update["update"]["sessionUpdate"] = json!(format!("unknown-{seed}")),
+                2 => update["update"]["content"]["text"] = json!([seed]),
+                _ => update["update"]["content"] = serde_json::Value::Null,
+            }
+            assert!(
+                serde_json::from_value::<acp::SessionNotification>(update).is_err(),
+                "seed={seed} case={case}"
+            );
+            let mut error = Error::internal_error();
+            let secret = format!("private-fixture-token-{seed}");
+            error.data = Some(json!({"details":format!("provider error {secret}")}));
+            assert!(!diagnostic(&error).contains(&secret), "seed={seed}");
+        }
+    }
 }

@@ -1,3 +1,4 @@
+mod candidates;
 mod session_history;
 use tracing_subscriber::EnvFilter;
 mod maintenance;

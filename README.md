@@ -195,6 +195,24 @@ diff requests after restart, and preservation of developer changes. Run instruct
 and the separate, still-required pinned Codex manual gate are in
 [First vertical slice acceptance](docs/first-vertical-slice.md).
 
+### Complete-result review and performance (B18/B27)
+
+Closed sessions can prepare an immutable complete-result candidate in **Review
+result**. Review its baseline/result diffs, explicitly run optional checks in a
+temporary copy, and accept/reject the entire candidate. Changed check output
+requires review of a new hash. These decisions do not apply, stage or commit
+files. The [combined runbook](docs/first-slice-performance-and-review.md) covers
+the opt-in native real-Codex test, repeatable performance fixtures, protocol and
+remaining host acceptance.
+
+### Safe native application (B19)
+
+Accepted complete results can be planned against the current project in **Apply
+result**. Native text conflicts create a new candidate for review. Application
+journals retain preimages and receipts; explicit conditional rollback preserves
+newer edits and staging. Affected unsaved buffers and unsupported paths/types
+block writes. See [supported limits and recovery](docs/native-safe-change-application.md).
+
 ### Bundled native engine (B28)
 
 `buildPlugin` includes the host's release engine, version/protocol manifest and
@@ -378,3 +396,8 @@ background processes. Worktree files and baseline snapshots are retained.
 See [history recovery and retention](docs/history-recovery-and-retention.md) for
 commands, crash guarantees, storage accounting, and the recovery hook required by
 future change-application features.
+
+B26/B29 add seeded integrity regressions and package-bound release acceptance.
+The [desktop acceptance guide](docs/first-vertical-slice.md#packaged-desktop-acceptance--2026-10-16)
+describes full IDE restart, rendered historical diffs, process cleanup, CI commands
+and the remaining release gates.

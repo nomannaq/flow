@@ -123,6 +123,9 @@ pub struct PreparedWorktree {
     _repository: Arc<Lease>,
 }
 impl PreparedWorktree {
+    pub(crate) fn owner_instance(&self) -> &str {
+        &self._repository.owner.instance
+    }
     /// Release OS handles but preserve stale ownership when shutdown is unknown.
     pub(crate) fn quarantine(&self) {
         self._workspace.preserve_owner();

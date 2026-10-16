@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -25,14 +26,19 @@ internal class EngineReconnect : Exception()
  * The owner must close in finally, even when its service scope is cancelled.
  */
 internal class EngineConnection(private val process: Process, scope: CoroutineScope) {
+    // Service cancellation enters close(); IPC must survive until the shutdown
+    // acknowledgement. This job is owned and cancelled only by this connection.
+    private val transportJob = SupervisorJob()
+    private val transportScope = CoroutineScope(scope.coroutineContext + transportJob)
     private val incoming = Channel<JsonObject>(8)
     private val outgoing = Channel<ByteArray>(8)
     private var serial = 0L
     private var tracker: RequestTracker? = null
     private var limits: InitializeResult? = null
     val pid: Long get() = process.pid()
+    val isAlive: Boolean get() = process.isAlive && reader.isActive && writer.isActive
 
-    private val reader = scope.launch(Dispatchers.IO) {
+    private val reader = transportScope.launch(Dispatchers.IO) {
         try {
             val input = process.inputStream.buffered()
             while (true) incoming.send(ProtocolJson.parse(readFrame(input) ?: break))
@@ -42,7 +48,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
             incoming.close()
         }
     }
-    private val writer = scope.launch(Dispatchers.IO) {
+    private val writer = transportScope.launch(Dispatchers.IO) {
         try {
             for (frame in outgoing) {
                 process.outputStream.write(frame)
@@ -52,7 +58,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
             incoming.close()
         }
     }
-    private val stderr = scope.launch(Dispatchers.IO) {
+    private val stderr = transportScope.launch(Dispatchers.IO) {
         try {
             val buffer = ByteArray(4096)
             while (process.errorStream.read(buffer) >= 0) { /* Drain without retaining sensitive logs. */ }
@@ -149,6 +155,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
         writer.join()
         stderr.join()
         incoming.cancel()
+        transportJob.cancel()
         check(exited) { "Engine did not exit" }
     }
 

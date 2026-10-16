@@ -122,3 +122,46 @@ impl Blobs {
         Ok(bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn b26_bounded_decompression_rejects_bombs_truncation_and_seeded_corruption() {
+        let temporary = tempfile::tempdir().unwrap();
+        let blobs = Blobs {
+            root: temporary.path().to_owned(),
+        };
+        let bytes = vec![b'x'; 1024 * 1024];
+        let id = ContentId::hash(&bytes);
+        let compressed = zstd::stream::encode_all(bytes.as_slice(), 3).unwrap();
+        fs::write(blobs.path(&id), &compressed).unwrap();
+        // A forged small advertised length must stop at size + 1.
+        for size in [0, 1, 32, 4096, MAX_BLOB_BYTES as u64 + 1] {
+            assert!(matches!(
+                blobs.read(&id, size),
+                Err(Error::CorruptContent(_))
+            ));
+        }
+        for length in [0, 1, 4, compressed.len() / 2, compressed.len() - 1] {
+            fs::write(blobs.path(&id), &compressed[..length]).unwrap();
+            assert!(
+                blobs.read(&id, bytes.len() as u64).is_err(),
+                "truncated={length}"
+            );
+        }
+        let mut seed = 26u64;
+        for case in 0..128 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let mut damaged = compressed.clone();
+            let offset = seed as usize % damaged.len();
+            damaged[offset] ^= 1 << (case % 8);
+            fs::write(blobs.path(&id), damaged).unwrap();
+            // Padding-bit mutations can be valid. No accepted decode may differ.
+            if let Ok(decoded) = blobs.read(&id, bytes.len() as u64) {
+                assert_eq!(decoded, bytes, "seed={seed} case={case}");
+            }
+        }
+    }
+}

@@ -42,9 +42,17 @@ class EngineBridgeTest {
             val controller = EngineController(scope, ProjectId("agent-test"), launchProcess = {
                 ProcessBuilder(requireNotNull(System.getProperty("flow.test.engine")), "--project-root", project.toString(), "--data-root", data.toString())
                     .start().also { processes.add(it) }
-            }, pollMs = 25)
+            }, pollMs = 1)
             controller.start()
             withTimeout(10000) { controller.view.first { it.connected } }
+            // Exercise command delivery at poll deadlines; every queued waiter
+            // must receive a response instead of silently losing its command.
+            repeat(256) {
+                delay(1)
+                withTimeout(2000) {
+                    assertTrue(controller.historyRequest("sessions.list").asJsonObject.getAsJsonArray("items").isEmpty)
+                }
+            }
             // An unborn repository must explain why the commit field cannot be filled.
             controller.agentRequest("sessions.baseline")
             val rejected = withTimeout(10000) { controller.view.first { it.actionError.contains("first commit") && !it.baselineLoading } }
@@ -64,6 +72,7 @@ class EngineBridgeTest {
             val waiting = withTimeout(15000) { controller.view.first { it.agent.permissions.isNotEmpty() } }
             val permission = waiting.agent.permissions.single()
             assertEquals(listOf("once"), permission.options.map { it.first })
+            assertEquals(setOf("once"), permission.allowOnce)
             controller.agentRequest("permissions.respond", AgentProtocol.permission(waiting.agent.id!!, permission.id, "once"))
             val ready = withTimeout(10000) { controller.view.first { it.agent.status == "ready" } }
             assertEquals("flow-probe-1\n", Files.readString(java.nio.file.Path.of(ready.agent.workspace!!).resolve("probe.txt")))
@@ -279,6 +288,27 @@ class EngineBridgeTest {
                 }
             }
             assertFalse(process.isAlive)
+        }
+    }
+
+    @Test
+    fun cancelledServiceKeepsTransportAliveForGracefulShutdown() = runBlocking {
+        val root = Files.createTempDirectory("flow-shutdown-receipt-")
+        val receipt = root.resolve("shutdown.txt")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val process = ProcessBuilder(requireNotNull(System.getProperty("flow.test.python")), requireNotNull(System.getProperty("flow.test.fakeEngine")), "shutdown-receipt", receipt.toString()).start()
+        val connection = EngineConnection(process, scope)
+        try {
+            connection.initialize(ProjectId("cancelled-service"))
+            scope.cancel()
+            connection.close()
+            assertEquals("shutdown acknowledged\n", Files.readString(receipt))
+            assertEquals(0, process.exitValue())
+        } finally {
+            scope.cancel()
+            if (process.isAlive) connection.close()
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.join()
+            root.toFile().deleteRecursively()
         }
     }
 

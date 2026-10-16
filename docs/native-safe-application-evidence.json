@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-16",
+  "baseRevision": "403516732919b534050906081c7630cf8debfbf3",
+  "uncommitted": true,
+  "sourceSha256": {
+    "crates/runtime/src/application.rs": "2c2ed8be628d9a8c2da0f8d099d594ecead65f7645ddb8bedcd1d41bc832940d",
+    "crates/history/src/store/application.rs": "9398ba5110c2e96ebac966dc115ac716c27ce405c802fc71a9f466596664e696",
+    "crates/history/src/schema-5.sql": "cd145d84bd3987b167feae53f6ec65feab965b8adc58ee1449717d6caf789d0d",
+    "crates/runtime/examples/first_slice_bench.rs": "3cf1f5334717e0b7dc78c9a9cab20d65ad1c4754c63e0b4a028eaddb372c83de",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/ui/NativeApplication.kt": "4d412a4f8532bc5be475f8f2137195ea179119525add659431357fb8d7f98e18",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/ui/ApplicationPanel.kt": "6ed4c5b70a11825cb68b400d67816037ea2f62977afa6038dc25ccc5a2db7eb2",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/ui/SessionHistoryPanel.kt": "9b19292b26fe602e883bf1e019837749cc69ada8de26e33d9bd4a84de19c747f",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/EngineController.kt": "ed2d88a8bef5780fd7e5f8456a35cb26674b32f61bb2808350f246fbd23ebc8c"
+  },
+  "macOS": {
+    "rustCoreTests": 94,
+    "rustExampleTests": 2,
+    "nativeTests": 29,
+    "packagedNativeTests": 3,
+    "pythonPackagingRegressions": 7,
+    "strictGradle": "passed",
+    "pluginVerifier": "Compatible with IU-253.33813.55; 4 deprecated and 6 experimental API usages"
+  },
+  "linux": {
+    "status": "passed",
+    "environment": "Debian 12 x86-64 container emulated on arm64 macOS; Xvfb; two Rust workers; file watching disabled for emulation",
+    "rustCoreTests": 94,
+    "rustExampleTests": 2,
+    "nativeTests": 29,
+    "strictGradleAndPackageChecks": "passed",
+    "pluginVerifier": "Rerun on macOS only"
+  },
+  "artifacts": [
+    {
+      "target": "aarch64-apple-darwin",
+      "archive": "flow-jetbrains-0.1.0-aarch64-apple-darwin.zip",
+      "archiveSha256": "af957a18e17656df59ad62329612a000070086a577d4aa132e7887c5684fd811",
+      "engineSha256": "3d6dca82aabaca3eb8c7138a7e51d18454586bc36ad23f91ed337ce157521372"
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "archive": "flow-jetbrains-0.1.0-x86_64-unknown-linux-gnu.zip",
+      "archiveSha256": "997851f3dda926e79d6e28de9f24b00e0be1132c1728a640924af731768bb496",
+      "engineSha256": "e8ade0c8d9bb3dbf3fa6b10a0c1ad8adbbafac0328d0a1b5af83bd4b85e5a275"
+    }
+  ],
+  "runtimeBaseline": {
+    "schemaVersion": 1,
+    "mode": "offline-owned-fixtures",
+    "applicationEnabled": true,
+    "machine": "Apple M4 Pro; 24 GiB RAM; macOS 27.0.1 arm64",
+    "os": "macos",
+    "architecture": "aarch64",
+    "logicalCpus": 12,
+    "cacheState": "first capture follows fixture creation; warm runs reuse OS caches; caches were not flushed",
+    "exclusions": [
+      ".git control data only"
+    ],
+    "fixtures": [
+      {
+        "files": 1000,
+        "bytesPerFile": 255,
+        "status": "supported",
+        "firstScanMs": 79.34770900000001,
+        "warmFullScan": {
+          "samplesMs": [
+            77.647333,
+            78.27775,
+            78.775625,
+            79.441541,
+            79.79404199999999,
+            79.9095,
+            79.950458,
+            80.584167,
+            80.65899999999999,
+            81.11016699999999,
+            81.317167,
+            81.457417,
+            81.534834,
+            81.82237500000001,
+            81.899958,
+            82.648958,
+            82.799917,
+            83.11716700000001,
+            91.87608399999999,
+            93.273417
+          ],
+          "medianMs": 81.317167,
+          "p95Ms": 91.87608399999999
+        },
+        "tenFileReconciliationAndDurableCapture": {
+          "samplesMs": [
+            244.549166,
+            251.88833300000002,
+            255.98779199999998,
+            258.235041,
+            261.464708,
+            263.927875,
+            268.220708,
+            268.67929200000003,
+            269.25933299999997,
+            273.183084,
+            274.32870799999995,
+            281.150625,
+            286.052084,
+            286.74716700000005,
+            291.239917,
+            297.39662500000003,
+            301.266333,
+            303.94291699999997,
+            4214.520792,
+            4529.1311670000005
+          ],
+          "medianMs": 274.32870799999995,
+          "p95Ms": 4214.520792
+        },
+        "incremental500msP95Met": false,
+        "operationFirstPage": {
+          "samplesMs": [
+            0.021792000000000002,
+            0.021875,
+            0.021917,
+            0.021958,
+            0.022084,
+            0.022417,
+            0.022875,
+            0.023542,
+            0.024417,
+            0.024542,
+            0.024666999999999998,
+            0.024708,
+            0.026333,
+            0.026459,
+            0.031041000000000003,
+            0.031042,
+            0.031124999999999996,
+            0.044458,
+            0.048583,
+            0.052333000000000005
+          ],
+          "medianMs": 0.024666999999999998,
+          "p95Ms": 0.048583
+        },
+        "smallHistoricalPair": {
+          "samplesMs": [
+            0.050958,
+            0.050959,
+            0.051082999999999996,
+            0.0515,
+            0.051667,
+            0.051875,
+            0.051917,
+            0.052166000000000004,
+            0.052250000000000005,
+            0.054709,
+            0.055542,
+            0.056042,
+            0.056792,
+            0.058,
+            0.060083,
+            0.06025,
+            0.062792,
+            0.07404100000000001,
+            0.074917,
+            0.2145
+          ],
+          "medianMs": 0.055542,
+          "p95Ms": 0.074917
+        },
+        "longHistoryOperations": 20,
+        "storageGrowthBytes": 13317088,
+        "replayEvents": 40,
+        "replayMs": 0.056916,
+        "reopenWithIntegrityAuditMs": 165.97220800000002,
+        "application": {
+          "fixture": "B27 1000 files (255 baseline bytes/file) / ten changed files / 20 retained operations",
+          "samples": 5,
+          "writer": "owned Rust disk fixture with fsync; native IDE tested separately",
+          "planning": {
+            "samplesMs": [
+              499.53220799999997,
+              501.567583,
+              508.764917,
+              510.029791,
+              514.184625
+            ],
+            "medianMs": 508.764917,
+            "p95Ms": 514.184625
+          },
+          "applyIncludingJournalAndReconciliation": {
+            "samplesMs": [
+              3177.9765,
+              3221.7260410000004,
+              3232.9665410000002,
+              3253.072458,
+              3280.0785
+            ],
+            "medianMs": 3232.9665410000002,
+            "p95Ms": 3280.0785
+          },
+          "conditionalRollback": {
+            "samplesMs": [
+              1247.8881669999998,
+              1253.193792,
+              1266.758791,
+              1269.9539579999998,
+              1360.997584
+            ],
+            "medianMs": 1266.758791,
+            "p95Ms": 1360.997584
+          },
+          "textConflictPolicy": "concurrent same-path changes require native merge; no heuristic auto-merge"
+        }
+      }
+    ],
+    "notMeasured": [
+      "full IDE process startup",
+      "visible UI responsiveness",
+      "real adapter latency",
+      "100k-file complete capture (unsupported)"
+    ]
+  },
+  "nativeMacBaseline": {
+    "fixture": "native Swing / two candidate files / one text conflict / dirty index and unrelated sentinels",
+    "applyIncludingRpcAndTestPollingMs": 968.168709,
+    "rollbackIncludingRpcAndTestPollingMs": 870.661708,
+    "visibleRenderingMeasured": false
+  },
+  "capture500msTargetMet": false,
+  "releaseAcceptancePassed": false,
+  "remaining": [
+    "B12 rendered diff/full IDE process restart/plugin unload observations",
+    "Observed capture p95 missed 500ms target; repeat quiet profiling before release",
+    "Windows and Intel Mac native execution",
+    "Clean-machine installation and public signing",
+    "B26 broader adversarial/fault-injection coverage and B29 release acceptance"
+  ]
+}

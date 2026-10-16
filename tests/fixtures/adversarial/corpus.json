@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "seeds": [1, 26, 29, 255, 4096, 65537, 3735928559, 4294967295],
+  "unsafePaths": ["", "../escape", "/absolute", "a/../../escape", "a//b", "./file", "a/./b", ".git/config", "dir/.GiT/config", "git~1/config", ".git~1/config", "NUL.txt", "COM1.log", "LPT9", "a:b", "a\\b", "a?b", "trailing.", "trailing ", "a/.. /x", "\u0000", "line\nbreak", "\u007f", "日本語.txt"],
+  "malformedAcpUpdates": [null, [], {}, {"sessionId":"fixture"}, {"sessionId":"fixture","update":{}}, {"sessionId":7,"update":{}}, {"sessionId":"fixture","update":{"sessionUpdate":"tool_call","toolCallId":null}}, {"sessionId":"fixture","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":false}}}, {"sessionId":"fixture","update":{"sessionUpdate":"unknown-future-value"}}]
+}

@@ -42,19 +42,21 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
-      - name: Check Python packaging and Rust
-        run: |
-          python scripts/test_packaged_plugin.py
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo test --workspace --locked
-      - name: Build and test installed plugin payload
-        working-directory: integrations/jetbrains
+      - name: Run B26 integrity and B29 packaged acceptance
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a ./gradlew check buildPlugin checkPackagedPlugin checkPackagedAgentSession verifyPluginProjectConfiguration verifyPlugin --dependency-verification=strict --console=plain
+            xvfb-run -a python scripts/check_release_acceptance.py --output integrations/jetbrains/build/release-acceptance/evidence.json
           else
-            ./gradlew check buildPlugin checkPackagedPlugin checkPackagedAgentSession verifyPluginProjectConfiguration verifyPlugin --dependency-verification=strict --console=plain
+            python scripts/check_release_acceptance.py --output integrations/jetbrains/build/release-acceptance/evidence.json
+          fi
+      # A separate production IDE process verifies startup and dynamic disposal;
+      # this is an offline fixture, independent of the opt-in real model gate.
+      - name: Check installed plugin in full IDE processes
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a python scripts/check_desktop_acceptance.py --plugin integrations/jetbrains/build/distributions/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/desktop-acceptance/evidence.json
+          else
+            python scripts/check_desktop_acceptance.py --plugin integrations/jetbrains/build/distributions/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/desktop-acceptance/evidence.json
           fi
       - name: Retain platform package after native acceptance
         uses: actions/upload-artifact@v4
@@ -68,6 +70,8 @@ jobs:
         with:
           name: native-checks-${{ matrix.target }}
           path: |
+            integrations/jetbrains/build/release-acceptance/
+            integrations/jetbrains/build/desktop-acceptance/
             integrations/jetbrains/build/reports/
             integrations/jetbrains/build/test-results/
             integrations/jetbrains/build/native-engine/distribution.json

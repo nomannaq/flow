@@ -49,3 +49,8 @@ for line in sys.stdin:
     else:
         result = None
     print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "epoch": epoch, "result": result}), flush=True)
+
+    if method == "engine.shutdown" and mode == "shutdown-receipt":
+        from pathlib import Path
+        Path(sys.argv[2]).write_text("shutdown acknowledged\n")
+        break

@@ -38,7 +38,19 @@ class WorkbenchToolWindowFactory :
         val details = JBList<String>()
         val sessions = AgentSessionPanel(controller)
         val tabs = JTabbedPane()
-        val history = SessionHistoryPanel(project, controller, service.scope) { source ->
+        lateinit var application: ApplicationPanel
+        val candidate = CandidateReviewPanel(project, controller, service.scope, applyCandidate = { id ->
+            application.selectCandidate(id)
+            tabs.selectedIndex = 3
+        })
+        application = ApplicationPanel(project, controller, service.scope, reviewCandidate = { id ->
+            candidate.selectCandidate(id)
+            tabs.selectedIndex = 2
+        })
+        val history = SessionHistoryPanel(project, controller, service.scope, reviewSession = { id ->
+            candidate.selectSession(id)
+            tabs.selectedIndex = 2
+        }) { source ->
             sessions.newConversation(source)
             tabs.selectedIndex = 0
         }
@@ -67,6 +79,8 @@ class WorkbenchToolWindowFactory :
                 tabs.apply {
                     addTab("Session", sessions)
                     addTab("History", history)
+                    addTab("Review result", candidate)
+                    addTab("Apply result", application)
                     addTab("Engine", JBScrollPane(details))
                 },
                 BorderLayout.CENTER,
@@ -80,6 +94,8 @@ class WorkbenchToolWindowFactory :
         val disposed = AtomicBoolean()
         content.setDisposer(lifetime)
         Disposer.register(lifetime, history)
+        Disposer.register(lifetime, candidate)
+        Disposer.register(lifetime, application)
         val observer = service.scope.launch {
             controller.view.collect { view ->
                 withContext(Dispatchers.EDT) {
@@ -87,6 +103,8 @@ class WorkbenchToolWindowFactory :
                         status.text = view.status
                         sessions.update(view)
                         history.update(view)
+                        candidate.update(view)
+                        application.update(view)
                         details.setListData(
                             arrayOf(
                                 view.pid?.let { "Engine PID: $it" } ?: "Engine offline",

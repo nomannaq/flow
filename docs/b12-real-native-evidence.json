@@ -1,0 +1,57 @@
+{
+  "nativeSwingAcceptancePassed": true,
+  "b12GatePassed": false,
+  "adapterSha256": "027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524",
+  "modelOverride": "gpt-6-astra",
+  "ideBuild": "IU-253.33813.55",
+  "nativeSwingSubmission": true,
+  "immutableNativeDiffRequests": true,
+  "engineRestartAndLiveDeletion": true,
+  "noAgentAutoResume": true,
+  "dirtyMainProjectAndIndexUnchanged": true,
+  "writerShutdownVerified": true,
+  "fullIdeProcessRestart": "pending host observation",
+  "renderedDiffPresentation": "pending host observation",
+  "scratch": "<retained owned native acceptance scratch>",
+  "pairs": [
+    {
+      "before": "",
+      "after": "version 1\n",
+      "title": "Flow historical: flow-b12.txt \u2014 session-70dc372df734a22bbde5bf8ebb722634-observation-1",
+      "operation": "completed / ambiguous \u2014 2026-10-15T21:58:39.069Z \u2014 session-70dc372df734a22bbde5bf8ebb722634-observation-1"
+    },
+    {
+      "before": "version 1\n",
+      "after": "version 2\n",
+      "title": "Flow historical: flow-b12.txt \u2014 session-70dc372df734a22bbde5bf8ebb722634-observation-2",
+      "operation": "completed / ambiguous \u2014 2026-10-15T21:58:46.186Z \u2014 session-70dc372df734a22bbde5bf8ebb722634-observation-2"
+    }
+  ],
+  "flowRevision": "d493aaf9b9d9f82a1338077989d9f9865c936f7b",
+  "flowDirtyAtRunStart": true,
+  "engineSha256": "984cb34c42bf8c1be20cc42ff8bff47867e9bc2210ec5a8fbd3e76343f289389",
+  "sourceSha256": {
+    "integrations/jetbrains/src/test/kotlin/dev/flow/ui/FirstVerticalSliceTest.kt": "2d5eb794a9dce5f05203c8b8230add5230ac7caa5baab01ad8e64bf726732b61",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/AgentProtocol.kt": "9cd89ac67c96e02e30eb7c7e9e8452c4c6b2229ea85a9af3834fc44794f7d24e",
+    "integrations/jetbrains/src/main/kotlin/dev/flow/ui/SessionHistoryPanel.kt": "33b6f294acaf95878c00dfc0db2c89f95048cbbca99c4a3336cc20c230ba0df2"
+  },
+  "recordedAt": "2026-10-15T21:59:55.761631+00:00",
+  "engineSource": "staged release payload; development test framework, not clean-machine installation",
+  "remainingHostChecks": [
+    "Rendered read-only diff presentation",
+    "Full IDE process restart with immutable history and no agent auto-resume",
+    "Project disposal/plugin-unload process cleanup"
+  ],
+  "intermediateFailures": [
+    {
+      "phase": "first native attempt",
+      "result": "timed out at permission prompt",
+      "cause": "test inferred a fixture display label; corrected to use explicit allowOnce metadata and option identity"
+    },
+    {
+      "phase": "second native attempt",
+      "result": "both turns completed; history file page timed out",
+      "cause": "tree selection clearing cancelled page loading; deterministic regression confirmed failure with original behavior and success with the fix"
+    }
+  ]
+}
