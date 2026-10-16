@@ -292,6 +292,27 @@ class EngineBridgeTest {
     }
 
     @Test
+    fun cancelledServiceKeepsTransportAliveForGracefulShutdown() = runBlocking {
+        val root = Files.createTempDirectory("flow-shutdown-receipt-")
+        val receipt = root.resolve("shutdown.txt")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val process = ProcessBuilder(requireNotNull(System.getProperty("flow.test.python")), requireNotNull(System.getProperty("flow.test.fakeEngine")), "shutdown-receipt", receipt.toString()).start()
+        val connection = EngineConnection(process, scope)
+        try {
+            connection.initialize(ProjectId("cancelled-service"))
+            scope.cancel()
+            connection.close()
+            assertEquals("shutdown acknowledged\n", Files.readString(receipt))
+            assertEquals(0, process.exitValue())
+        } finally {
+            scope.cancel()
+            if (process.isAlive) connection.close()
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.join()
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun brokenEngineStopsAfterBoundedRetries() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val processes = CopyOnWriteArrayList<Process>()

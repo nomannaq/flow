@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
+import com.intellij.ui.components.panels.VerticalLayout
 import dev.flow.bridge.EngineController
 import dev.flow.bridge.EngineView
 import dev.flow.bridge.optionalText
@@ -76,6 +77,7 @@ internal class CandidateReviewPanel(
     }
     private val files = JBList<Row>().apply {
         accessibleContext.accessibleName = "Complete-result files"
+        emptyText.text = "Select a closed session in History to review its files."
         cellRenderer = DefaultListCellRenderer().apply { putClientProperty("html.disable", true) }
         selectionMode = javax.swing.ListSelectionModel.SINGLE_SELECTION
     }
@@ -89,7 +91,7 @@ internal class CandidateReviewPanel(
 
     init {
         add(
-            JPanel(GridLayout(0, 1, 4, 4)).apply {
+            JPanel(VerticalLayout(4)).apply {
                 add(session)
                 add(stopped)
                 add(
@@ -104,7 +106,7 @@ internal class CandidateReviewPanel(
         )
         add(JBScrollPane(files), BorderLayout.CENTER)
         add(
-            JPanel(GridLayout(0, 1, 4, 4)).apply {
+            JPanel(VerticalLayout(4)).apply {
                 add(
                     JPanel(GridLayout(1, 2, 4, 4)).apply {
                         add(open)
@@ -120,6 +122,9 @@ internal class CandidateReviewPanel(
                 add(
                     JBTextArea("Optional check: JSON array of executable and arguments. Runs as your account in a temporary copy; commands and exit status are retained. No commands are read from repository instructions.").apply {
                         isEditable = false
+                        rows = 3
+                        columns = 30
+                        isOpaque = false
                         lineWrap = true
                         wrapStyleWord = true
                     },

@@ -135,9 +135,8 @@ host acceptance work. No real model session was launched by this implementation.
 Update on 2026-10-15: B28 ran the normal strict Gradle suite successfully,
 including all three native B12 scenarios, plugin packaging and Plugin Verifier.
 The earlier wrapper-cache restriction was overcome through authorized local
-build access. See [B28 validation](native-engine-packaging.md)
-for artifact results and the intermediate native-test timeout; the real-Codex
-and clean-machine/native host evidence above is still pending.
+build access. The real-Codex and clean-machine/native host evidence above was
+still pending at that point; subsequent observations are recorded below.
 
 ## Real-engine acceptance — 2026-10-15
 
@@ -185,7 +184,7 @@ assistant. This development sandbox does not replace clean-machine installation.
 
 ## Combined-branch native update — 2026-10-16
 
-The [opt-in real Swing scenario](first-slice-performance-and-review.md#b12-native-acceptance)
+The [opt-in real Swing scenario](../integrations/jetbrains/src/test/kotlin/dev/flow/ui/FirstVerticalSliceTest.kt)
 now passes with the same checksum-pinned adapter and explicit model. It submitted
 both tasks through the actual native controls, verified the two immutable
 read-only diff requests, preserved staged/unstaged/untracked developer work and
@@ -207,5 +206,103 @@ coroutine callbacks. Failure scratch data was retained, not declared accepted.
 The final diff request is still intercepted by the native test framework. Full
 rendered presentation, full IDE-process restart and project/plugin disposal are
 not asserted by that test; **G1/B12 remain open** for those host observations.
-Use the combined runbook's explicit acceptance data root to review the retained
-real history in the pinned sandbox without another model run.
+Use the retained session descriptor described below to review real history in
+the pinned sandbox without another model run.
+
+## Packaged desktop acceptance — 2026-10-16
+
+`scripts/check_desktop_acceptance.py` installs the unchanged host ZIP into an
+isolated plugin directory and opens two separate production IDE processes. Its
+auxiliary test plugin is compiled against the pinned SDK and is never included
+in the distributed Flow ZIP. This is independent of the native unit-test runtime;
+there is no development executable override or diff-display interception.
+
+The runner opens both historical transitions through Flow's actual History
+controls and checks the visible native editors' exact text and read-only flags.
+It retains painted-window screenshots, checks compact Review/Apply controls and
+the file viewport, then starts an offline adapter with a background child. One
+process closes the project; the other dynamically unloads Flow. Both must stop
+the installed engine, adapter and child. History reopening must start no agent.
+Developer files, HEAD and index, the ZIP, engine digest and source inventory must
+remain unchanged. Startup/import dialogs are suppressed only in the disposable
+profile; the user's IDE profile and accessibility settings are untouched.
+
+This exposed the ownership failure shown in the Session screenshot: service
+cancellation stopped the IPC reader/writer before graceful engine shutdown,
+forcing termination and leaving workspace ownership quarantined. The transport
+now survives service cancellation until bounded shutdown completes, then closes.
+A receipt-based regression failed before this fix and passed after it. No owner
+record is cleared and recovery confirmation is never inferred from dead PIDs.
+Review/Apply controls now keep their preferred heights instead of inheriting the
+summary area's height. A bounded journal viewport leaves room for files and all
+Apply actions. The desktop check caught the hidden viewport before its fix.
+
+With JDK 21 in `JAVA_HOME`, after `buildPlugin`, run from the repository root:
+
+```sh
+python3 scripts/check_desktop_acceptance.py \
+  --plugin integrations/jetbrains/build/distributions/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip \
+  --output integrations/jetbrains/build/desktop-acceptance/evidence.json
+```
+
+Use the matching host ZIP on Windows x86-64, Linux x86-64 or Intel macOS, and
+`python` where appropriate. Linux requires a desktop display or `xvfb-run -a`.
+The pinned IU-253.33813.55 SDK is located in the Gradle cache by default;
+`--ide-home` and `--java-home` support explicit local installations. The existing
+four-host CI matrix runs this check after combined release acceptance and retains
+phase reports, screenshots and logs, including on failure. These CI additions
+have not been pushed or executed on Windows/Intel Mac by this local change.
+
+The offline fixture is the default. To reopen retained real-agent history without
+a model call, provide `--reuse-session path/to/descriptor.json`. The descriptor
+must name a stopped, owned acceptance fixture's absolute `project` and `dataRoot`,
+its `sessionId`, probe `filename`, and two exact text strings in `versions`.
+The data directory is copied before the IDE starts; the original history is
+preserved. The project receives ordinary `.idea` metadata, while developer file
+bytes, HEAD and index remain protected. This option is for disposable acceptance
+projects, not an active developer workspace.
+
+On macOS Apple Silicon, the installed package reopened the retained real-Codex
+session's exact `absent → version 1\n` and `version 1\n → version 2\n` transitions
+in both IDE processes, without auto-resuming an agent. Project disposal and
+dynamic plugin unload stopped all owned processes, and developer work was
+unchanged. The compact layouts were inspected at the tool window's actual
+456-pixel width. The [supplemental desktop evidence](b12-desktop-evidence.json)
+binds these observations to the ZIP, source inventory, IDE and harness hashes.
+Full local logs/screenshots are retained beside
+`integrations/jetbrains/build/b12-desktop-acceptance/evidence.json`.
+
+This supplies the desktop observations left pending in the earlier
+[real native report](b12-real-native-evidence.json); its original results and
+limitations remain recorded. No new paid model session was launched. This run
+does not establish the separate B29 requirement for a new real-adapter session
+against this exact artifact. Clean-machine installation, a true plugin upgrade,
+rendered merge Apply/Cancel, keyboard/screen-reader checks, signing/notarization
+and native Windows/Intel Mac host observations remain open. An isolated profile
+is not a clean machine, and `releaseAccepted` remains false.
+
+For the complete fixture, integrity, verifier and performance suite:
+
+```sh
+python3 scripts/check_release_acceptance.py --offline \
+  --output integrations/jetbrains/build/release-acceptance/evidence.json
+```
+
+Omit `--offline` when dependencies need downloading. Neither command commits,
+pushes, signs for public distribution or publishes anything.
+
+The final strict Gradle run passed all 30 Kotlin/native tests. All 105 Rust tests
+(including examples), 13 Python tests, formatting, Clippy and packaged smoke
+checks passed. Plugin Verifier reported compatibility with the pinned IDE,
+retaining 4 deprecated-API and 6 experimental-API warnings.
+The complete release runner finished with `automatedPassed: true` and
+`releaseAccepted: false`. The 20-sample capture benchmark passed at p95
+241.46 ms against the 500 ms target. Its ZIP and source inventory hashes match
+the desktop report exactly.
+
+One earlier complete run timed out after 15 seconds awaiting native application
+completion in `SafeApplicationTest`. That scenario passed in isolation with the
+identical installed release binary, then passed in the complete rerun. Its cause
+is unconfirmed; no timeout or assertion was weakened. The failed report and logs
+are retained under
+`integrations/jetbrains/build/release-acceptance/acceptance-1ra09ctg/`.

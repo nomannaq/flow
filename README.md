@@ -397,6 +397,7 @@ See [history recovery and retention](docs/history-recovery-and-retention.md) for
 commands, crash guarantees, storage accounting, and the recovery hook required by
 future change-application features.
 
-B26/B29 add seeded integrity regressions and a package-bound release acceptance
-runner. See the [combined acceptance guide](docs/adversarial-and-release-acceptance.md)
-for commands, evidence, and the remaining desktop/performance gates.
+B26/B29 add seeded integrity regressions and package-bound release acceptance.
+The [desktop acceptance guide](docs/first-vertical-slice.md#packaged-desktop-acceptance--2026-10-16)
+describes full IDE restart, rendered historical diffs, process cleanup, CI commands
+and the remaining release gates.

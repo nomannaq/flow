@@ -47,6 +47,7 @@ REQUIRED_TESTS = {
         "replayFloodAndInvalidCursorRefreshAuthoritativeSnapshot",
         "fakeInjectionFloodStaleReplyTimeoutAndCleanup",
         "brokenEngineStopsAfterBoundedRetries",
+        "cancelledServiceKeepsTransportAliveForGracefulShutdown",
     },
     "dev.flow.ui.FirstVerticalSliceTest": {
         "testTwoEditsSurviveRestartAndLiveDeletion",

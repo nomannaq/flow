@@ -17,6 +17,8 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.panels.VerticalLayout
+import com.intellij.util.ui.JBUI
 import dev.flow.bridge.EngineController
 import dev.flow.bridge.EngineView
 import kotlinx.coroutines.CancellationException
@@ -29,7 +31,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
-import java.awt.GridLayout
 import java.util.UUID
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
@@ -70,10 +71,13 @@ internal class ApplicationPanel(
     }
     private val files = JBList<Row>().apply {
         accessibleContext.accessibleName = "Application files"
+        emptyText.text = "Plan an accepted result to inspect its files."
         cellRenderer = DefaultListCellRenderer().apply { putClientProperty("html.disable", true) }
     }
     private val journals = JBList<Journal>().apply {
         accessibleContext.accessibleName = "Application journals"
+        visibleRowCount = 3
+        emptyText.text = "No application journals loaded."
         cellRenderer = DefaultListCellRenderer().apply { putClientProperty("html.disable", true) }
     }
     private var candidateId: String? = null
@@ -86,17 +90,17 @@ internal class ApplicationPanel(
 
     init {
         add(
-            JPanel(GridLayout(0, 1, 4, 4)).apply {
+            JPanel(VerticalLayout(4)).apply {
                 add(stopped)
                 add(planButton)
                 add(refresh)
-                add(JBScrollPane(journals))
+                add(JBScrollPane(journals).apply { preferredSize = JBUI.size(0, 80) })
                 add(JBScrollPane(summary))
             },
             BorderLayout.NORTH,
         )
         add(JBScrollPane(files), BorderLayout.CENTER)
-        add(JPanel(GridLayout(0, 2, 4, 4)).apply { listOf(inspect, merge, review, apply, cancel, reconcile, rollback).forEach { add(it) } }, BorderLayout.SOUTH)
+        add(JPanel(VerticalLayout(4)).apply { listOf(inspect, merge, review, apply, cancel, reconcile, rollback).forEach { add(it) } }, BorderLayout.SOUTH)
         stopped.addActionListener { buttons() }
         files.addListSelectionListener { buttons() }
         journals.addListSelectionListener { if (!busy && !it.valueIsAdjusting) journals.selectedValue?.let { row -> request { show(controller.historyRequest("apply.get", query(row.value)).asJsonObject) } } }
