@@ -78,14 +78,21 @@ tasks.withType<PrepareSandboxTask>().configureEach {
     }
 }
 
+val acceptanceEngine = providers.gradleProperty("flowAcceptanceEngine").orNull?.let { file(it) }
+
 tasks.test {
     dependsOn(buildProtocolTestEngine)
     // Native executables and external fixtures must invalidate cached test runs.
-    inputs.file(rootProject.file("../../target/debug/$engineFileName"))
+    inputs.file(acceptanceEngine ?: rootProject.file("../../target/debug/$engineFileName"))
     inputs.dir(layout.buildDirectory.dir("native-engine"))
     inputs.files(rootProject.file("../../tests/fixtures/engine/fake_engine.py"), rootProject.file("../../scripts/spikes/fixture_agent.py"))
     systemProperty("flow.test.nativePayload", layout.buildDirectory.dir("native-engine").get().asFile.absolutePath)
-    systemProperty("flow.test.engine", rootProject.file("../../target/debug/$engineFileName").absolutePath)
+    systemProperty("flow.test.engine", (acceptanceEngine ?: rootProject.file("../../target/debug/$engineFileName")).absolutePath)
+    if (acceptanceEngine != null) {
+        require(acceptanceEngine.isFile && acceptanceEngine.name == engineFileName) { "Select an installed native release engine" }
+        require(providers.gradleProperty("flowRealCodex").orNull != "true") { "Packaged fixture acceptance cannot enable real model calls" }
+        outputs.upToDateWhen { false }
+    }
     // Agent validation requires an absolute executable, not a PATH command.
     val pythonPath = providers.exec { commandLine(pythonExecutable, "-c", "import sys; print(sys.executable)") }.standardOutput.asText.get().trim()
     systemProperty("flow.test.python", pythonPath)

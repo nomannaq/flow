@@ -38,6 +38,7 @@ internal class CandidateReviewPanel(
     private val project: Project,
     private val controller: EngineController,
     parentScope: CoroutineScope,
+    private val applyCandidate: (String) -> Unit = {},
     private val presentDiff: (SimpleDiffRequest) -> Unit = { DiffManager.getInstance().showDiff(project, it) },
 ) : JBPanel<CandidateReviewPanel>(BorderLayout()),
     Disposable {
@@ -49,6 +50,7 @@ internal class CandidateReviewPanel(
     private val more = JButton("Next candidate files")
     private val open = JButton("Open complete-result diff")
     private val accept = JButton("Accept complete result")
+    private val application = JButton("Plan application of accepted result")
     private val reject = JButton("Reject complete result")
     private val command = JBTextField("[]").apply { accessibleContext.accessibleName = "Explicit candidate check command" }
     private val runCheck = JButton("Run explicit check (15s)")
@@ -122,6 +124,7 @@ internal class CandidateReviewPanel(
                         wrapStyleWord = true
                     },
                 )
+                add(application)
                 add(command)
                 add(
                     JPanel(GridLayout(1, 2, 4, 4)).apply {
@@ -132,6 +135,7 @@ internal class CandidateReviewPanel(
             },
             BorderLayout.SOUTH,
         )
+        application.addActionListener { candidate?.let { applyCandidate(it["id"].asString) } }
         stopped.addActionListener { buttons() }
         files.addListSelectionListener { buttons() }
         prepare.addActionListener {
@@ -192,6 +196,9 @@ internal class CandidateReviewPanel(
         buttons()
     }
 
+    fun selectCandidate(id: String) {
+        request { load(id) }
+    }
     fun selectSession(id: String) {
         revision++
         job?.cancel()
@@ -237,6 +244,7 @@ internal class CandidateReviewPanel(
         val result = controller.historyRequest("candidates.get", query(id)).asJsonObject
         require(result["id"].asString == id)
         candidate = result
+        session.text = result.getAsJsonObject("candidate")["sessionId"].asString
         val checks = result.getAsJsonArray("checks")
         summary.text = "Candidate $id\nBaseline commit: ${result["baseCommit"].asString}\nDecision: ${result["decision"].asString}; source generation current: ${result["sourceGenerationCurrent"].asBoolean}\n" +
             if (checks.isEmpty) "No validation commands configured. Review covers the complete frozen result; it does not apply files." else checks.joinToString("\n") { "${it.asJsonObject["status"].asString}: ${it.asJsonObject["command"]}" }
@@ -276,6 +284,7 @@ internal class CandidateReviewPanel(
     private fun buttons() {
         val available = connected && !busy
         prepare.isEnabled = available && stopped.isSelected
+        application.isEnabled = available && candidate?.get("decision")?.asString == "accepted"
         refresh.isEnabled = available && candidate != null
         more.isEnabled = available && next != null
         open.isEnabled = available && files.selectedValue != null

@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -15,11 +16,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 
 internal data class EngineView(
     val status: String = "Engine not started",
     val connected: Boolean = false,
+    val epoch: String? = null,
     val pid: Long? = null,
     val health: String = "",
     val historyStatus: String = "",
@@ -47,12 +50,18 @@ internal class EngineController(
         data class Rpc(val method: String, val params: JsonObject, val reply: CompletableDeferred<JsonElement>? = null) : Command
     }
     private class Restart : Exception()
-    private val commands = Channel<Command>(32)
+    private val commands = Channel<Command>(32, onUndeliveredElement = { command ->
+        if (command is Command.Rpc) command.reply?.completeExceptionally(IllegalStateException("Connection closed before command delivery; outcome unknown"))
+    })
     private val mutableView = MutableStateFlow(EngineView())
     val view = mutableView.asStateFlow()
     private var job: Job? = null
 
+    @Volatile private var liveConnection: EngineConnection? = null
+    fun applicationEpochIsLive(epoch: String): Boolean = mutableView.value.epoch == epoch && liveConnection?.isAlive == true
+
     @Synchronized
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) {
@@ -68,9 +77,15 @@ internal class EngineController(
                             val initialized = connection.initialize(projectId)
                             var snapshot = snapshot(connection)
                             var cursor = snapshot.first
-                            mutableView.value = snapshot.second.copy(status = "Connected", connected = true, pid = connection.pid, agentSupported = initialized.capabilities.agentSessions)
+                            liveConnection = connection
+                            mutableView.value = snapshot.second.copy(status = "Connected", connected = true, epoch = initialized.epoch.value, pid = connection.pid, agentSupported = initialized.capabilities.agentSessions)
                             while (isActive) {
-                                when (val command = withTimeoutOrNull(pollMs) { commands.receive() }) {
+                                when (
+                                    val command = select<Command?> {
+                                        commands.onReceive { it }
+                                        onTimeout(pollMs) { null }
+                                    }
+                                ) {
                                     is Command.Rpc -> {
                                         val loadingBaseline = command.method == "sessions.baseline"
                                         mutableView.update { it.copy(actionError = "", baselineLoading = loadingBaseline) }
@@ -124,6 +139,7 @@ internal class EngineController(
                                 }
                             }
                         } finally {
+                            liveConnection = null
                             connection.close()
                         }
                     }
@@ -175,7 +191,7 @@ internal class EngineController(
     }
 
     suspend fun historyRequest(method: String, params: JsonObject = JsonObject()): JsonElement {
-        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff", "candidates.prepare", "candidates.get", "candidates.files", "candidates.diff", "candidates.decide", "candidates.check"))
+        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff", "candidates.prepare", "candidates.get", "candidates.files", "candidates.diff", "candidates.decide", "candidates.check", "apply.plan", "apply.get", "apply.list", "apply.preview", "apply.resolve", "apply.begin", "apply.authorize", "apply.receipt", "apply.finish", "apply.cancel", "apply.reconcile", "apply.rollback"))
         val reply = CompletableDeferred<JsonElement>()
         check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
         return reply.await()

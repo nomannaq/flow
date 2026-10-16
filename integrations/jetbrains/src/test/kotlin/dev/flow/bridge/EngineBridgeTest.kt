@@ -42,9 +42,17 @@ class EngineBridgeTest {
             val controller = EngineController(scope, ProjectId("agent-test"), launchProcess = {
                 ProcessBuilder(requireNotNull(System.getProperty("flow.test.engine")), "--project-root", project.toString(), "--data-root", data.toString())
                     .start().also { processes.add(it) }
-            }, pollMs = 25)
+            }, pollMs = 1)
             controller.start()
             withTimeout(10000) { controller.view.first { it.connected } }
+            // Exercise command delivery at poll deadlines; every queued waiter
+            // must receive a response instead of silently losing its command.
+            repeat(256) {
+                delay(1)
+                withTimeout(2000) {
+                    assertTrue(controller.historyRequest("sessions.list").asJsonObject.getAsJsonArray("items").isEmpty)
+                }
+            }
             // An unborn repository must explain why the commit field cannot be filled.
             controller.agentRequest("sessions.baseline")
             val rejected = withTimeout(10000) { controller.view.first { it.actionError.contains("first commit") && !it.baselineLoading } }

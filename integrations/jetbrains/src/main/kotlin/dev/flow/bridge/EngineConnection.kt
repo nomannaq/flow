@@ -31,6 +31,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
     private var tracker: RequestTracker? = null
     private var limits: InitializeResult? = null
     val pid: Long get() = process.pid()
+    val isAlive: Boolean get() = process.isAlive && reader.isActive && writer.isActive
 
     private val reader = scope.launch(Dispatchers.IO) {
         try {
