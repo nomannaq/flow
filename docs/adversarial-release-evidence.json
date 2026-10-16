@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "target": "aarch64-apple-darwin",
+  "startedAt": "2026-10-16T02:20:30.510346+00:00",
+  "baseRevision": "79468c8304054f28a85034ee016c584e6d414968",
+  "buildInputs": {
+    "sha256": "368d55ce3f4f27371848b34fb33aa5802ce01f0d8bd8d7bbdb8eb9c4032648b3",
+    "files": {
+      ".claude/helpers/graft-hooks.cjs": "b37689943b12374f731be77140f51c30fd310af466c2f8a2792d82b8c8d7d538",
+      ".claude/helpers/graft-statusline.cjs": "16bbc9e1900e549a5253c4c43da505524aebc9a78ad019feda0866d3ac4a879a",
+      ".claude/settings.json": "4a06601c36479f48cf0ea75710eb3d23dbafa726af475dca79eaf68f85b9f649",
+      ".editorconfig": "b5ccb0c9cdd582004e7f06d72185cb095ec6816ffa31a7be64f36052b0d983f1",
+      ".github/workflows/native-packages.yml": "4f8ba9e6cddc76cd109750fdc4965f5d34cb1423018fb3280e10f756e89b8e84",
+      ".gitignore": "5978aa221b808c8612e516759ba57069d98938b209bde09c9338631fd947e853",
+      ".idea/.gitignore": "de3dcd3b67895aa24d01485c60e342e81e37ea1530859b0756519a00f1b6d700",
+      ".idea/claudeCodeTabState.xml": "e58c5536575d3736a69e5ee4a2331396568cf678538f2a91a22e66357969699c",
+      ".idea/flow.iml": "6c53062defaa36c5ac213be0a6db3cd9555366751bb6448b6579e3ce28dbf44e",
+      ".idea/modules.xml": "f1e04511991a81cfe5415ce66a962c32369aa88bc97700a4c367601fe04faec2",
+      ".idea/vcs.xml": "6323e12648862a0a96fc0d7877672817d6cd91e2c2a3c3d78f1090db23c6e88e",
+      ".ignore": "5b345696ac9daf0b07ce5b9c56d5ec914815e395286f4c9f9ac3ec8ec83bf507",
+      ".mcp.json": "f6f5e08e9cc6c48e322df7cedc76693e750033ac612fccdd5099ba81a5cf13bd",
+      "Cargo.lock": "deb78df319cab45a60f7d8e0152cf4f8960b8463cf15e8b1169f80a709016297",
+      "Cargo.toml": "fd24f58e155161b232dabc2badcba2b5a16e3c376839270d9673408f099e0e0d",
+      "crates/engine/Cargo.toml": "d384fb2a43f2f0f4fa7ba9f76fd84285bc3803c5c032b3716d6407f6686f20f0",
+      "crates/engine/src/candidates.rs": "80f53b317d7358e219403942260ea25f1ed614a4a01e5fa5ba0a8d0c1ec5892f",
+      "crates/engine/src/main.rs": "4d4a8b14b210b15830e1f6d77f8b92e0e74432970997881b0d62e140fccaf2a2",
+      "crates/engine/src/maintenance.rs": "c8d64a6281bcfe4b39634d828dcfa4cf5fe190e7d8a9ebe3280800127062fb5d",
+      "crates/engine/src/rpc.rs": "35b3a02a077451d302f1feb7bdc315fd609a8eb3919986471bd758140377c205",
+      "crates/engine/src/session_history.rs": "bec771ee7110d03af8e0121bc3a457ba87e2182d97d58c0ff8840135a5858cd0",
+      "crates/history/Cargo.toml": "af993d824afaaed9de27d45bc292303d12d1c939cb5d1a48d0c85699fa15f5e2",
+      "crates/history/src/blobs.rs": "28e115f8e4606a888223305ce48ba57b7381675b4aa23afaaa165d7b6c5a317f",
+      "crates/history/src/lib.rs": "e833148be3ef3ac60c0dd358dc41c3035e377f1d8b8ba09ea97a29768b0bc127",
+      "crates/history/src/model.rs": "01fab9aa178a8d349d6b382852b108ca658232d3438850f0ea743ff4f8f01d65",
+      "crates/history/src/recorder.rs": "59d2118a57e4141cca961b392441da1754b717b3b850460a5a7d7f156d1d7220",
+      "crates/history/src/schema-1.sql": "4ac86dde083559851da4debb992aa6b90af31bfd3a75cd2be8d0c08f601141d5",
+      "crates/history/src/schema-2.sql": "558b696b365e53f11ec1ed7d02dcbb3ed776c6475eafa6c2a557825ed6a4e16d",
+      "crates/history/src/schema-3.sql": "b67642434f494bc0e0176cff80b99d5ee798e342a844c178a056aec0bbaafb32",
+      "crates/history/src/schema-4.sql": "a7f17a1554c72dd2c9ac4dd707aa7619ac274a5e3a731387e3473539a1665d34",
+      "crates/history/src/schema-5.sql": "cd145d84bd3987b167feae53f6ec65feab965b8adc58ee1449717d6caf789d0d",
+      "crates/history/src/store.rs": "4fb9e0499733878496bce9fdfb8f1b1986c99dd2fb6f97762771bee9ae20afd3",
+      "crates/history/src/store/application.rs": "9398ba5110c2e96ebac966dc115ac716c27ce405c802fc71a9f466596664e696",
+      "crates/history/src/store/candidates.rs": "233f4d9e5d6edea4459f53cedd874a5c99f8e2de52ba93e9c459d7fcf3f684ef",
+      "crates/history/src/store/lifecycle.rs": "b397a6c95599b25061d579bdcd46e0d90f861475c6c2450155bfe33591332f9c",
+      "crates/history/src/store/maintenance.rs": "998265bd22adffec0dcb10f316c79585485200ef9e84f8279cb0cca8f03cb852",
+      "crates/history/src/store/tests.rs": "c363199d4ec4e464bdbf00c19894afedcf5f7d1c8cc656f20ccfaa9e47e693b1",
+      "crates/protocol/Cargo.toml": "dc2c410b82d7ae3e9ce01310170bf2a13c3eb564641052cf986614ef33e8b836",
+      "crates/protocol/examples/export_schema.rs": "ac72759d89449d4fef23008c3da68cb21cd61cef39ec4fb541ec00837af157f0",
+      "crates/protocol/src/agents.rs": "e28fb7c080c1b2130713e1363c9c6f80a3796c7ef14bcf8184d68ac3c38da359",
+      "crates/protocol/src/durable.rs": "08b0bfa7885addabfee94487f3f105ea1bd40ba59b5dec6102d9519d05c46469",
+      "crates/protocol/src/lib.rs": "6d9fbb54871610d14ba578b1bacf6b546a354a7258bdcc41d1bf8e9a8eeff38d",
+      "crates/protocol/src/messages.rs": "1df125e12630440eabc9379e856488a2cd27a239e8cf48b757cfd56372d91ce3",
+      "crates/protocol/tests/contract.rs": "eb1889fc742af36d43bdc2b7c65bb13350c5fa4b3985c03985fb43253e8d211f",
+      "crates/runtime/Cargo.toml": "44645108dc96cb712211497445059836c7ab65b66a655c0486d5bb28c184d49d",
+      "crates/runtime/examples/acp_probe.rs": "15f3b94ad253f9f23946fe45081523e6a09de89246b7cee547ca2dfbf15cbea5",
+      "crates/runtime/examples/first_slice_bench.rs": "45ba6837f427add14fb4a9fdaf2b336d28ca0f6f4249206406fd98e72b5fb74b",
+      "crates/runtime/examples/worktree.rs": "e13d224ca468c26a315825e16282ee55de499b73e4993bd8607040fe91af75d2",
+      "crates/runtime/src/agents.rs": "55596f1b5ac125f917641dabdce1e8fb216e99607847336bc0ae3aec268f99a9",
+      "crates/runtime/src/application.rs": "aabc0ac6f3e7246366af38663fc3e7e36bb4fb8757b69d1fab73c38844071935",
+      "crates/runtime/src/application/tests.rs": "61ec8f0534c27bdf6a3feccafbf048c070a2139e5b530357173dd93d4c4b20b1",
+      "crates/runtime/src/lib.rs": "b3ce4a32a4180b73f98eaf5364edf4f4c0f1a41458b33a3e81fca7b395dcbcef",
+      "crates/runtime/src/maintenance.rs": "beecb570163e1699865f449962d2b901cc28951a13bf48ae635de6c167025812",
+      "crates/runtime/src/maintenance/tests.rs": "f9c3e3a636c59e3386de46673b94f5c42da83588882ebe087add3967d6799987",
+      "crates/runtime/src/recorder.rs": "574499bc9817df23fb74e95c191de6cdafeb0e7214ffa7b289680484e99866cb",
+      "crates/runtime/src/recorder/tests.rs": "9d264cddc063d26788f202417825749a3fbdddfe19dfeddb8dc673159229b70a",
+      "crates/runtime/src/review.rs": "cbff2bd3619d5d312186bf73a8cc9ef56e0df13ac50279180cbfa37d78a30e3d",
+      "crates/runtime/src/review/tests.rs": "d45463dfe10abffb8b66d291a82ff3852df60e9ee80a4d97d2aa11709820547f",
+      "crates/runtime/src/worktrees.rs": "b05919d9a7d8017308e937760bed2242c03cd6f050b43515657e8b43218e375c",
+      "crates/runtime/src/worktrees/io.rs": "83bf228daf84b3b440556b59353480014f0fd26da6b66b9438b65e2c418e1035",
+      "crates/runtime/src/worktrees/tests.rs": "f5b1a513e233050cb3ee74e5070dcbe6612210ce8cb3414a9fb35064c0b96861",
+      "crates/runtime/tests/fixtures.rs": "8d48809d6833fc588683fc350663a53206010285481f359037f48bea5acf7861",
+      "integrations/jetbrains/.gitignore": "ff89fe1831f717d441c0f6c7106db4615f7556b147ea0a7d9f547390b0fc49cd",
+      "integrations/jetbrains/build.gradle.kts": "22b413d24d691e8676b1111adf079b94daad5c1391d938b252739d4a741b6230",
+      "integrations/jetbrains/gradle.lockfile": "067e12ea46c21695b10d06c6d482c044951b021e1a224c3b4ec5fab0d08c73c9",
+      "integrations/jetbrains/gradle.properties": "0d2f4d01942685748854ba8033887f15605e6ab2f2d93897b8aa79ecd879ce3f",
+      "integrations/jetbrains/gradle/verification-metadata.xml": "e99429f33500cf38cb206dfcf59a2682a6100048ac8a1506c589cbdee1fc2e0b",
+      "integrations/jetbrains/gradle/wrapper/gradle-wrapper.jar": "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3",
+      "integrations/jetbrains/gradle/wrapper/gradle-wrapper.properties": "db86e18f20b9b7b115dc68f1693c5d073489f9de414d45dc410faef1d2080b6d",
+      "integrations/jetbrains/gradlew": "3238afb2aed5cb16eb7d6718077e7138059108f007b54179e9cc157c5a6e0e89",
+      "integrations/jetbrains/gradlew.bat": "1d297e00bd21de3ace22b4d7f2de1f9dfa858883d66bbf7c1ccbecccec8f4f3b",
+      "integrations/jetbrains/settings.gradle.kts": "49ddaa2f00104a2d35007279e699891e0a60280ad7b3cf4d3f32ddcc0fcad501",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/AgentProtocol.kt": "9cd89ac67c96e02e30eb7c7e9e8452c4c6b2229ea85a9af3834fc44794f7d24e",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/EngineConnection.kt": "094924274b4d867be1e7a55869f005291a401acf6d8ad793dc295fcd300f84e4",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/EngineController.kt": "ed2d88a8bef5780fd7e5f8456a35cb26674b32f61bb2808350f246fbd23ebc8c",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/EngineExecutable.kt": "d840d446befae9104126b2ee4db8d6df3d96e470a4af38456baa7e17f0bab3c4",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/EngineService.kt": "cfdf25a912f39961b81ff15f1c39f1d90024add07d85f4c4727c55f3cd0e80eb",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/HistoryReview.kt": "c0944ad17672b0328f2ede3ff81cec93ec7967616ae0e37a5ecb3fed904e6aec",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/Protocol.kt": "a79a7b6b95843eb522d880d8ff357d1a43b573fd7bc62333724d98da17ab4f46",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/bridge/RequestTracker.kt": "c16fd8bc0e4d70a6fd7db4f35759f401cd57cf25a5ebcf098c343bfc748028a1",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/spikes/CompatibilityProbeActions.kt": "1fa566e6f2e1b2fb5eb5b04b334e134037490d0f144656a108db750b5817abe5",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/spikes/NativeProbeFixtures.kt": "0ded1e4b0443f4e143c8cf4595b72568e5df706e58167e7c055034f2b99a93e2",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/AgentSessionPanel.kt": "d5d4644ccfe43161547e9a080c657e1c9703cf2d72f0eda61b5debebce13eb89",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/ApplicationPanel.kt": "6ed4c5b70a11825cb68b400d67816037ea2f62977afa6038dc25ccc5a2db7eb2",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/CandidateReviewPanel.kt": "e2b9cb9a41f38b48ecda1ce55ef0e64b2d9f0544ce16baa44205f3646a1bfaae",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/CodexSettings.kt": "bd8713a42e2d74232b6f5434e9766a3c768ce420a5a4355ec0fdb021e128f842",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/NativeApplication.kt": "4d412a4f8532bc5be475f8f2137195ea179119525add659431357fb8d7f98e18",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/SessionHistoryPanel.kt": "9b19292b26fe602e883bf1e019837749cc69ada8de26e33d9bd4a84de19c747f",
+      "integrations/jetbrains/src/main/kotlin/dev/flow/ui/WorkbenchToolWindowFactory.kt": "cc1ef5248b3cf6ce96ba2a00a9138bd65b6a8ec6774150dea82976a9d4fcf8cc",
+      "integrations/jetbrains/src/main/resources/META-INF/plugin.xml": "538347cad18be2ff590351ec3477e0f61c35a6ab3e8abff55a2cb44bab2b571b",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/bridge/EngineBridgeTest.kt": "69a8d8b6dff2d527b29ca8879f4ac572588529337804fe182ad5db9f26f8ee0f",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/bridge/EngineExecutableTest.kt": "e12ca44121e93c646b896b0b1eed609184f28b00b99b8675e0e2624bb47a473f",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/bridge/ProtocolTest.kt": "5de140213235ca147f6f51f2562150ade96ca9c3097827b8c43888cc29838770",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/spikes/NativeCompatibilityTest.kt": "57ed4678688efa10b44430c70a91941d78cb2845d6eb9531e0420c5d30441bad",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/ui/FirstVerticalSliceTest.kt": "7772f331fa6f19da182d8f384e97eb61674e417d11cff982db30a9c679abb468",
+      "integrations/jetbrains/src/test/kotlin/dev/flow/ui/SafeApplicationTest.kt": "3cac7c95a6e01cb675b00d436111b54e5ea8e46cea3aee6075c6069dda1b6f82",
+      "rust-toolchain.toml": "b2c19d86958ed6810741488db5cd352856f303c53bcf0ea774e72f94ee4d201e",
+      "scripts/check_codex_session.py": "53a4ce3eca01f7945c7918f039c203faffc021a5e075df6d035d83d7cdc1256d",
+      "scripts/check_packaged_plugin.py": "cad1a44f871b2a6d118efbdec2e2285b12d7c867ff18bfdbbae4351b204d5028",
+      "scripts/check_release_acceptance.py": "4fb9268b5701abd3349089313e99ce1378d8c7acb3f7d3be36687b636ae14b5c",
+      "scripts/native_platform.py": "aa757cf30964835cc3e08dd388819f98e5d1d4cdb31ddc97d545bb9e1a925879",
+      "scripts/package_native_engine.py": "ca44bf447eae06f9db92b6de64e4844be111de49aaadd656cb1e008c959ed4e9",
+      "scripts/spikes/check_acp_probe.py": "079491577ee93df83b8e1ec330d5096f9105797aea228551e308cb1d9b8840de",
+      "scripts/spikes/fixture_agent.py": "7d31c9393d0aba927218596f5596215bd78ef01e15117927928f4cc313ae1abb",
+      "scripts/test_packaged_plugin.py": "6d880661d4cacae7aa4304e5b02ba3e8457cb6b3d8bb8d533a4524cdd5c9b538",
+      "scripts/test_release_acceptance.py": "09d9033c09f5ec867d2a6500fc7cf48c45d71616d9281b781adb580bc0d0f766",
+      "tests/fixtures/adversarial/corpus.json": "1d8f70f0fd10b6f76855fa3570681b91d5ff2e686e95b5753351826d085bc02a",
+      "tests/fixtures/engine/fake_engine.py": "6c1022a4a71dfb4cf7b935546251176b0292497e533cb1fbeb3c4b0a5dc36be1",
+      "tests/fixtures/protocol/golden.json": "2f6dd256207362d9a6c1fe42296c5fc1004fa3b3c939a67d520c6bdb7a7128a7",
+      "tests/fixtures/protocol/schema.json": "749a5c1b5b4e0929426f1143849cf43f8f929c1612aea0e0eb2654e00ebf872b",
+      "tests/integration/agent_sessions.rs": "8f95e1c6d1606da0822edc6394d14737eb6afe0a67f381d364ede94bcda70ad1",
+      "tests/integration/bootstrap.rs": "51f43c9bf3392fb02622f9f66ccd6e0ad0c460a19a7e635444c763e7d1d5204f",
+      "tests/support/agent.rs": "79f88666e820fc3b756ff571bbdf5c7988f7627d42e22f73ed50fc7fb4f5ad35",
+      "tests/support/repository.rs": "327e4b8f1c7fc065980b335e2cf3517565bf45416ff183589f6e69a2dfcf2c51"
+    }
+  },
+  "automatedPassed": true,
+  "releaseAccepted": false,
+  "steps": [
+    {
+      "name": "python",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/python.log"
+    },
+    {
+      "name": "rust-format",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/rust-format.log"
+    },
+    {
+      "name": "rust-clippy",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/rust-clippy.log"
+    },
+    {
+      "name": "rust-tests",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/rust-tests.log"
+    },
+    {
+      "name": "build-package",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/build-package.log"
+    },
+    {
+      "name": "packaged-native",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/packaged-native.log"
+    },
+    {
+      "name": "runtime-performance",
+      "exitCode": 0,
+      "log": "/Users/nomanqureshi/Desktop/dev-noman/flow/integrations/jetbrains/build/release-acceptance/acceptance-z0q_qv18/runtime-performance.log"
+    }
+  ],
+  "hostChecks": {
+    "cleanInstall": {
+      "status": "pending"
+    },
+    "ideRestartWithHistory": {
+      "status": "pending"
+    },
+    "upgradeWithHistory": {
+      "status": "pending"
+    },
+    "renderedReadOnlyDiffAndMerge": {
+      "status": "pending"
+    },
+    "keyboardAndScreenReader": {
+      "status": "pending"
+    },
+    "projectCloseAndPluginUnload": {
+      "status": "pending"
+    },
+    "realPinnedAdapter": {
+      "status": "pending"
+    }
+  },
+  "rust": {
+    "testsIncludingExamples": 105,
+    "ignored": 0
+  },
+  "artifact": {
+    "archive": "flow-jetbrains-0.1.0-aarch64-apple-darwin.zip",
+    "sha256": "af957a18e17656df59ad62329612a000070086a577d4aa132e7887c5684fd811",
+    "engineSha256": "3d6dca82aabaca3eb8c7138a7e51d18454586bc36ad23f91ed337ce157521372"
+  },
+  "packageSmoke": {
+    "target": "aarch64-apple-darwin",
+    "engineVersion": "0.1.0",
+    "engineSha256": "3d6dca82aabaca3eb8c7138a7e51d18454586bc36ad23f91ed337ce157521372",
+    "freshStartup": true,
+    "restart": true,
+    "shutdown": true,
+    "outsideCheckout": true,
+    "pathsWithSpaces": true,
+    "signing": "ad-hoc-internal-smoke",
+    "nativeIDEInstall": "pending host check",
+    "fixtureSession": {
+      "mode": "fixture",
+      "scratch": "/var/folders/v5/lf97d5xn7kq0m2kcc01lfs_w0000gn/T/flow-b10-lwqywwle",
+      "sessionId": "session-03b89284b0d82084360f31d88c8b7ed1",
+      "operations": 3,
+      "historicalTransitions": true,
+      "mainProjectUnchanged": true,
+      "reportedAgent": "flow-fixture",
+      "reportedVersion": "1",
+      "shutdownVerified": true,
+      "descendantStopped": true,
+      "manifestMatches": true
+    }
+  },
+  "native": {
+    "passed": true,
+    "tests": 29,
+    "skipped": 0,
+    "expectedPlatformSkips": [],
+    "classes": [
+      "dev.flow.bridge.EngineBridgeTest",
+      "dev.flow.bridge.EngineExecutableTest",
+      "dev.flow.bridge.ProtocolTest",
+      "dev.flow.spikes.NativeCompatibilityTest",
+      "dev.flow.ui.FirstVerticalSliceTest",
+      "dev.flow.ui.SafeApplicationTest"
+    ]
+  },
+  "pluginVerifier": {
+    "verdict": "Compatible. 4 usages of deprecated API. 6 usages of experimental API",
+    "ideBuild": "IU-253.33813.55"
+  },
+  "performance": {
+    "status": "passed",
+    "p95Ms": 241.422166,
+    "targetMs": 500,
+    "samples": 20
+  },
+  "observationIdentity": {
+    "target": "aarch64-apple-darwin",
+    "archiveSha256": "af957a18e17656df59ad62329612a000070086a577d4aa132e7887c5684fd811",
+    "buildInputsSha256": "368d55ce3f4f27371848b34fb33aa5802ce01f0d8bd8d7bbdb8eb9c4032648b3",
+    "ideBuild": "IU-253.33813.55"
+  },
+  "finishedAt": "2026-10-16T02:23:12.498566+00:00",
+  "uncommitted": true,
+  "environment": {
+    "os": "macOS 27.0.1 arm64",
+    "processor": "Apple M4 Pro",
+    "physicalMemoryBytes": 25769803776,
+    "logicalCpus": 12,
+    "hardwareLabelSource": "sysctl -n machdep.cpu.brand_string hw.memsize kern.osproductversion"
+  },
+  "pythonRegressions": 10,
+  "runtimeBaseline": {
+    "schemaVersion": 1,
+    "mode": "offline-owned-fixtures",
+    "applicationEnabled": true,
+    "machine": "unlabelled reference machine",
+    "os": "macos",
+    "architecture": "aarch64",
+    "logicalCpus": 12,
+    "cacheState": "first capture follows fixture creation; warm runs reuse OS caches; caches were not flushed",
+    "exclusions": [
+      ".git control data only"
+    ],
+    "fixtures": [
+      {
+        "files": 1000,
+        "bytesPerFile": 255,
+        "status": "supported",
+        "firstScanMs": 75.114208,
+        "warmFullScan": {
+          "samplesMs": [
+            65.65275,
+            66.02437499999999,
+            68.933875,
+            69.161667,
+            69.305,
+            70.73241700000001,
+            71.052875,
+            71.186541,
+            72.27675,
+            72.405125,
+            73.721542,
+            73.766625,
+            73.816458,
+            73.974333,
+            74.186042,
+            74.3925,
+            74.542208,
+            74.56004200000001,
+            74.797667,
+            77.763209
+          ],
+          "medianMs": 73.721542,
+          "p95Ms": 74.797667
+        },
+        "tenFileReconciliationAndDurableCapture": {
+          "samplesMs": [
+            209.186667,
+            209.470459,
+            212.34483300000002,
+            212.534583,
+            214.472417,
+            215.454375,
+            216.39558300000002,
+            216.44454199999998,
+            216.456208,
+            218.411708,
+            220.378541,
+            223.433333,
+            225.45162499999998,
+            227.562292,
+            228.16079200000001,
+            228.234166,
+            229.38825,
+            231.533,
+            241.422166,
+            253.03112500000003
+          ],
+          "medianMs": 220.378541,
+          "p95Ms": 241.422166
+        },
+        "incremental500msP95Met": true,
+        "operationFirstPage": {
+          "samplesMs": [
+            0.021542000000000002,
+            0.021625000000000002,
+            0.021625000000000002,
+            0.021625000000000002,
+            0.021790999999999998,
+            0.021832999999999998,
+            0.021916,
+            0.021959,
+            0.022166,
+            0.022167,
+            0.022417,
+            0.022459,
+            0.022500000000000003,
+            0.023333,
+            0.023416,
+            0.023625,
+            0.023917,
+            0.024916,
+            0.029750000000000002,
+            0.04075
+          ],
+          "medianMs": 0.022417,
+          "p95Ms": 0.029750000000000002
+        },
+        "smallHistoricalPair": {
+          "samplesMs": [
+            0.045208,
+            0.046083,
+            0.046625,
+            0.047667,
+            0.048208,
+            0.048208,
+            0.048666,
+            0.049416,
+            0.049666999999999996,
+            0.050083,
+            0.050542,
+            0.051291,
+            0.051958,
+            0.053583,
+            0.05375,
+            0.053916,
+            0.055166,
+            0.060292,
+            0.065833,
+            0.101084
+          ],
+          "medianMs": 0.050542,
+          "p95Ms": 0.065833
+        },
+        "longHistoryOperations": 20,
+        "storageGrowthBytes": 13304800,
+        "replayEvents": 40,
+        "replayMs": 0.061583,
+        "reopenWithIntegrityAuditMs": 141.999334,
+        "application": {
+          "fixture": "B27 1000 files (255 baseline bytes/file) / ten changed files / 20 retained operations",
+          "samples": 5,
+          "writer": "owned Rust disk fixture with fsync; native IDE tested separately",
+          "planning": {
+            "samplesMs": [
+              505.04995900000006,
+              505.14262499999995,
+              510.95295799999997,
+              514.168625,
+              522.036209
+            ],
+            "medianMs": 510.95295799999997,
+            "p95Ms": 522.036209
+          },
+          "applyIncludingJournalAndReconciliation": {
+            "samplesMs": [
+              2935.930375,
+              2941.909,
+              2961.0435,
+              3103.933459,
+              3262.973417
+            ],
+            "medianMs": 2961.0435,
+            "p95Ms": 3262.973417
+          },
+          "conditionalRollback": {
+            "samplesMs": [
+              1278.979708,
+              1285.016416,
+              1285.924458,
+              1286.9822499999998,
+              1316.9709169999999
+            ],
+            "medianMs": 1285.924458,
+            "p95Ms": 1316.9709169999999
+          },
+          "textConflictPolicy": "concurrent same-path changes require native merge; no heuristic auto-merge"
+        }
+      }
+    ],
+    "notMeasured": [
+      "full IDE process startup",
+      "visible UI responsiveness",
+      "real adapter latency",
+      "100k-file complete capture (unsupported)"
+    ]
+  },
+  "nativeApplicationTimings": {
+    "fixture": "native Swing / two candidate files / one text conflict / dirty index and unrelated sentinels",
+    "applyIncludingRpcAndTestPollingMs": 832.264292,
+    "rollbackIncludingRpcAndTestPollingMs": 588.141541,
+    "visibleRenderingMeasured": false
+  },
+  "linux": {
+    "environment": "Debian 12 x86-64 image emulated on arm64 macOS; two Rust workers; offline cached compiler and registry",
+    "b26FocusedRustTests": 9,
+    "status": "focused Rust and updated native tests passed",
+    "nativeDesktopAcceptance": false,
+    "updatedNativeTests": 2,
+    "nativeEngineSource": "verified installed x86_64-unknown-linux-gnu ZIP payload",
+    "engineSha256": "e8ade0c8d9bb3dbf3fa6b10a0c1ad8adbbafac0328d0a1b5af83bd4b85e5a275",
+    "rustLog": "/private/tmp/flow-b26-linux-nxpm652p/b26-linux.log",
+    "nativeLog": "/private/tmp/flow-b26-linux-nxpm652p/b26-native-linux.log",
+    "nativeResults": "integrations/jetbrains/build/b26-linux-native-reports/TEST-dev.flow.ui.SafeApplicationTest.xml",
+    "nativeEnvironment": "Xvfb with explicit display startup; file watching disabled under emulation; strict offline Gradle dependencies",
+    "rustLogSha256": "3d24eefa1d36188cda84ec2f31e31edd9ee7163c2496fc9c2c7be17086bb166a",
+    "nativeLogSha256": "f957c137b4f19e874098f7c37af778ca1573bd716666a64ca238bef761e7e023"
+  },
+  "remainingPlatformAcceptance": [
+    "Windows x86-64 native execution",
+    "Intel macOS native execution",
+    "clean desktop Linux installation"
+  ],
+  "releaseScope": "Local automated host acceptance only; desktop observations remain pending. No signing, publishing, Git commit or push."
+}

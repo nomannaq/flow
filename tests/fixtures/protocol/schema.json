@@ -191,6 +191,99 @@
       ],
       "type": "object"
     },
+    "ApplyAction": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "documentStamps": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "planId": {
+          "$ref": "#/$defs/MutationKey"
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "planId",
+        "candidateId",
+        "writersStopped"
+      ],
+      "type": "object"
+    },
+    "ApplyPrepare": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "planId": {
+          "$ref": "#/$defs/MutationKey"
+        },
+        "writersStopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "planId",
+        "candidateId",
+        "writersStopped"
+      ],
+      "type": "object"
+    },
+    "ApplyQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "fileIndex": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "planId": {
+          "$ref": "#/$defs/MutationKey"
+        },
+        "rollback": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "planId"
+      ],
+      "type": "object"
+    },
+    "ApplyResolve": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "fileIndex": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "planId": {
+          "$ref": "#/$defs/MutationKey"
+        }
+      },
+      "required": [
+        "planId",
+        "fileIndex",
+        "content"
+      ],
+      "type": "object"
+    },
     "CancelParams": {
       "properties": {
         "id": {
@@ -600,6 +693,18 @@
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "apply.plan",
+        "apply.get",
+        "apply.list",
+        "apply.preview",
+        "apply.resolve",
+        "apply.begin",
+        "apply.authorize",
+        "apply.receipt",
+        "apply.finish",
+        "apply.cancel",
+        "apply.reconcile",
+        "apply.rollback",
         "candidates.prepare",
         "candidates.get",
         "candidates.files",
@@ -968,6 +1073,18 @@
     "agentView": {
       "$ref": "#/$defs/AgentView"
     },
+    "applyAction": {
+      "$ref": "#/$defs/ApplyAction"
+    },
+    "applyPrepare": {
+      "$ref": "#/$defs/ApplyPrepare"
+    },
+    "applyQuery": {
+      "$ref": "#/$defs/ApplyQuery"
+    },
+    "applyResolve": {
+      "$ref": "#/$defs/ApplyResolve"
+    },
     "cancelParams": {
       "$ref": "#/$defs/CancelParams"
     },
@@ -1033,6 +1150,10 @@
     }
   },
   "required": [
+    "applyPrepare",
+    "applyQuery",
+    "applyAction",
+    "applyResolve",
     "candidatePrepare",
     "candidateQuery",
     "candidateDecision",

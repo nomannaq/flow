@@ -205,6 +205,14 @@ files. The [combined runbook](docs/first-slice-performance-and-review.md) covers
 the opt-in native real-Codex test, repeatable performance fixtures, protocol and
 remaining host acceptance.
 
+### Safe native application (B19)
+
+Accepted complete results can be planned against the current project in **Apply
+result**. Native text conflicts create a new candidate for review. Application
+journals retain preimages and receipts; explicit conditional rollback preserves
+newer edits and staging. Affected unsaved buffers and unsupported paths/types
+block writes. See [supported limits and recovery](docs/native-safe-change-application.md).
+
 ### Bundled native engine (B28)
 
 `buildPlugin` includes the host's release engine, version/protocol manifest and
@@ -388,3 +396,7 @@ background processes. Worktree files and baseline snapshots are retained.
 See [history recovery and retention](docs/history-recovery-and-retention.md) for
 commands, crash guarantees, storage accounting, and the recovery hook required by
 future change-application features.
+
+B26/B29 add seeded integrity regressions and a package-bound release acceptance
+runner. See the [combined acceptance guide](docs/adversarial-and-release-acceptance.md)
+for commands, evidence, and the remaining desktop/performance gates.
