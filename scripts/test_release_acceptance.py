@@ -4,10 +4,30 @@ import tempfile
 import unittest
 
 from check_codex_session import CheckFailed
-from check_release_acceptance import HOST_CHECKS, REQUIRED_TESTS, capture_gate, host_gates, native_results
+from check_release_acceptance import HOST_CHECKS, REQUIRED_TESTS, capture_gate, host_gates, native_results, desktop_gates
 
 
 class ReleaseAcceptanceTest(unittest.TestCase):
+    def test_desktop_proof_cannot_promote_clean_machine_or_screen_reader(self):
+        import copy
+        identity = {"target": "test", "archiveSha256": "a", "buildInputsSha256": "b", "ideBuild": "253"}
+        phases = [{"phase": name, "idePid": index + 1, "passed": True, "noAgentAutoResume": True,
+                   "renderedReadOnlyDiff0": True, "renderedReadOnlyDiff1": True, "renderedMergeApplyAndCancel": True,
+                   "engineAndDescendantsStopped": True, "projectDisposed": name == "close", "pluginUnloaded": name == "unload"}
+                  for index, name in enumerate(["close", "unload"])]
+        evidence = {"passed": True, "target": "test", "artifact": {"sha256": "a"}, "buildInputsSha256": "b", "ideBuild": "253", "phases": phases}
+        result = desktop_gates(evidence, identity)
+        self.assertEqual({"ideRestartWithHistory", "projectCloseAndPluginUnload", "renderedReadOnlyDiffAndMerge"}, set(result))
+        for field in ["passed", "noAgentAutoResume", "renderedReadOnlyDiff0", "engineAndDescendantsStopped"]:
+            bad = copy.deepcopy(evidence)
+            bad["phases"][0][field] = False
+            with self.subTest(field=field), self.assertRaises(CheckFailed):
+                desktop_gates(bad, identity)
+        for changes in [{"passed": False}, {"artifact": {"sha256": "other"}}, {"buildInputsSha256": "other"},
+                        {"upgrade": {"passed": True, "fromVersion": "0.1.0", "toVersion": "0.1.0"}}, {"realAdapterInvoked": True}]:
+            with self.subTest(changes=changes), self.assertRaises(CheckFailed):
+                desktop_gates({**evidence, **changes}, identity)
+
     def test_performance_is_recomputed_from_raw_samples(self):
         baseline = {"applicationEnabled": True, "fixtures": [{"files": 1000, "status": "supported",
             "incremental500msP95Met": True, "tenFileReconciliationAndDurableCapture": {

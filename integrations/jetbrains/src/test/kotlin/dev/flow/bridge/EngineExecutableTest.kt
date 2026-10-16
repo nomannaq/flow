@@ -132,7 +132,8 @@ class EngineExecutableTest {
                     if (Files.isDirectory(source)) Files.createDirectories(target) else Files.copy(source, target)
                 }
             }
-            val binary = EngineExecutable.resolve(installed, "0.1.0")
+            val version = requireNotNull(System.getProperty("flow.test.pluginVersion"))
+            val binary = EngineExecutable.resolve(installed, version)
             assertTrue(binary.startsWith(root))
             val project = Files.createDirectory(root.resolve("Project with spaces"))
             val data = Files.createDirectory(root.resolve("Private data"))
@@ -144,7 +145,7 @@ class EngineExecutableTest {
                     val connection = EngineConnection(process, this)
                     try {
                         assertTrue(connection.initialize(ProjectId("packaged-test")).capabilities.persistentEvents)
-                        assertEquals("0.1.0", ProtocolJson.health(connection.request("engine.health").asJsonObject).engineVersion)
+                        assertEquals(version, ProtocolJson.health(connection.request("engine.health").asJsonObject).engineVersion)
                         assertTrue(connection.request("sessions.active").asJsonObject["sessionId"].isJsonNull)
                     } finally {
                         connection.close()

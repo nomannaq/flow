@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,6 +25,14 @@ from check_release_acceptance import digest, build_inputs
 from native_platform import host_target
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def upgrade_versions(previous, current):
+    def version(value):
+        require(isinstance(value, str) and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value) is not None,
+                "Upgrade acceptance requires numeric major.minor.patch versions")
+        return tuple(map(int, value.split(".")))
+    require(version(previous) < version(current), "Upgrade must replace an older plugin version")
 
 
 def ide_metadata(home):
@@ -70,6 +79,19 @@ def build_harness(java_home, ide, plugins, logs):
     return digest(jar)
 
 
+def ide_agreement(java_home, ide, scratch, approved_hash):
+    output = scratch / "ide-agreement.json"
+    java = java_home / ("bin/java.exe" if os.name == "nt" else "bin/java")
+    command = [str(java), "-Djava.awt.headless=true", "-Didea.platform.prefix=Idea", f"-Didea.home.path={ide}",
+               "-cp", str(ide / "lib/*"), str(ROOT / "scripts/desktop/IdeAgreement.java"), str(output)]
+    if approved_hash:
+        require(re.fullmatch(r"[a-f0-9]{64}", approved_hash) is not None, "Use the reviewed IDE agreement's SHA-256")
+        command.append(approved_hash)
+    with (scratch / "ide-agreement.log").open("wb") as log:
+        subprocess.run(command, cwd=scratch, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=90)
+    return json.loads(output.read_text())
+
+
 def java_command(java_home, ide, launch, scratch, phase, project, data, seed):
     suffix = ".exe" if os.name == "nt" else ""
     replace = lambda value: value.replace("$APP_PACKAGE/Contents", str(ide)).replace("$IDE_HOME", str(ide))
@@ -89,7 +111,11 @@ def java_command(java_home, ide, launch, scratch, phase, project, data, seed):
         "flow.acceptance.python": str(Path(sys.executable).resolve()),
         "flow.acceptance.fixture": str(scratch / "fixture_agent.py"),
         "flow.acceptance.engine": seed["installedEngine"],
+        "flow.acceptance.pluginVersion": seed["pluginVersion"],
     }
+    if seed.get("realAdapter"):
+        properties.update({"flow.acceptance.adapter": seed["realAdapter"], "flow.acceptance.adapterSha256": seed["adapterSha256"],
+                           "flow.acceptance.model": seed["modelOverride"]})
     return [str(java_home / ("bin/java" + suffix)), "-Xmx1536m", *args,
             *(f"-D{k}={v}" for k, v in properties.items()), "-cp", os.pathsep.join(str(ide / "lib" / name) for name in launch["bootClassPathJarNames"]),
             "com.intellij.idea.Main", "flow-desktop-acceptance"]
@@ -129,9 +155,33 @@ def main(args):
         archive = args.plugin.resolve()
         checksum = digest(archive)
         plugins = scratch / "plugins with spaces"
-        binary, manifest = install(archive, plugins)
+        candidate, manifest = install(archive, scratch / "verified candidate")
+        previous_archive = args.upgrade_from.resolve() if args.upgrade_from else None
+        previous_checksum = digest(previous_archive) if previous_archive else None
+        binary, installed = install(previous_archive or archive, plugins)
+        if previous_archive:
+            upgrade_versions(installed["pluginVersion"], manifest["pluginVersion"])
+            report["upgrade"] = {"passed": False, "fromVersion": installed["pluginVersion"],
+                "toVersion": manifest["pluginVersion"], "previousArchiveSha256": previous_checksum,
+                "previousEngineSha256": installed["sha256"]}
         report["artifact"] = {"sha256": checksum, "engineSha256": manifest["sha256"]}
         report["harnessSha256"] = build_harness(java_home.resolve(), ide, plugins, scratch)
+        step = "IDE agreement preflight"
+        report["ideAgreement"] = ide_agreement(java_home.resolve(), ide, scratch, args.ide_terms_sha256)
+        require(report["ideAgreement"]["accepted"] is True,
+                "Pinned IDE agreement requires user confirmation; review ide-agreement.html and rerun with --ide-terms-sha256 " + report["ideAgreement"]["sha256"])
+        real = None
+        if args.real_adapter:
+            require(args.allow_once and args.adapter_sha256 and args.model and not args.reuse_session,
+                    "Real native acceptance needs --allow-once, --adapter-sha256 and --model, using a fresh owned project")
+            adapter = args.real_adapter.resolve()
+            require(re.fullmatch(r"[a-f0-9]{64}", args.adapter_sha256) is not None and digest(adapter) == args.adapter_sha256,
+                    "Pinned adapter checksum mismatch")
+            require(0 < len(args.model) <= 256 and all(ord(c) >= 32 and ord(c) != 127 for c in args.model), "Invalid explicit model override")
+            real = {"realAdapter": str(adapter), "adapterSha256": args.adapter_sha256, "modelOverride": args.model}
+            report.update(adapterSha256=args.adapter_sha256, modelOverride=args.model, realAdapterInvoked=False)
+        else:
+            require(not args.allow_once and not args.adapter_sha256 and not args.model, "Real adapter options require --real-adapter")
         step = "prepare offline or retained history"
         if args.reuse_session:
             seed = json.loads(args.reuse_session.read_text())
@@ -151,21 +201,44 @@ def main(args):
             source_data = Path(seed["scratch"]) / "data"
             seed.update(filename="probe.txt", versions=["flow-probe-1\n", "flow-probe-2\n"])
             report["historyMode"] = "offline fixture"
+            if real:
+                sentinel = project / "acceptance-sentinel.txt"
+                sentinel.write_text("staged developer sentinel\n")
+                git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+                git_env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+                subprocess.run(["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(project), "add", "--", sentinel.name],
+                               env=git_env, check=True, timeout=15)
+                sentinel.write_text("unstaged developer sentinel\n")
+                (project / "acceptance-untracked.txt").write_text("untracked developer sentinel\n")
         data = scratch / "private copied history"
         shutil.copytree(source_data, data)
         before = project_bytes(project)
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project)
         seed["installedEngine"] = str(binary)
+        seed["pluginVersion"] = installed["pluginVersion"]
+        if real:
+            seed.update(real)
         shutil.copy2(ROOT / "scripts/spikes/fixture_agent.py", scratch / "fixture_agent.py")
-        for phase in ("close", "unload"):
+        phases = (["baseline"] if previous_archive else []) + ["close"] + (["real"] if real else []) + ["unload"]
+        for phase in phases:
+            if phase == "close" and previous_archive:
+                step = "replace stopped previous plugin with candidate"
+                require(digest(binary) == installed["sha256"], "Previous payload changed during acceptance")
+                # Only this run's installed Flow directory is replaced. The same
+                # config, project and data store are retained across real IDE exits.
+                shutil.rmtree(binary.parents[2])
+                binary, installed = install(archive, plugins)
+                seed.update(installedEngine=str(binary), pluginVersion=installed["pluginVersion"])
             step = phase + " production IDE process"
             output = scratch / (phase + ".json")
             command = java_command(java_home.resolve(), ide, launch, scratch, phase, project, data, seed)
             print(step, flush=True)
+            if phase == "real":
+                report["realAdapterInvoked"] = True
             with (scratch / (phase + ".log")).open("wb") as log:
                 process = subprocess.Popen(command, cwd=scratch, stdout=log, stderr=subprocess.STDOUT)
                 try:
-                    status = process.wait(timeout=300)
+                    status = process.wait(timeout=600 if phase == "real" else 300)
                 except subprocess.TimeoutExpired:
                     # Only the JVM launched above is terminated; never a user's IDE.
                     process.terminate()
@@ -179,14 +252,21 @@ def main(args):
             result = json.loads(output.read_text())
             report["phases"].append(result)
             require(result.get("passed") is True, "Native desktop acceptance phase failed")
+            if phase == "real":
+                seed.update(sessionId=result["realSessionId"], filename="flow-b29.txt", versions=["version 1\n", "version 2\n"])
+                report["historyMode"] = "fresh pinned real adapter; native submission and immutable reopen"
             require(project_bytes(project) == before, "Developer file/index bytes changed during IDE acceptance")
             require(subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project) == head, "Developer HEAD changed during IDE acceptance")
-        require(report["phases"][0]["idePid"] != report["phases"][1]["idePid"], "Full IDE restart was not established")
+        require(len({phase["idePid"] for phase in report["phases"]}) == len(report["phases"]), "Full IDE restart was not established")
         require(digest(archive) == checksum and digest(binary) == manifest["sha256"], "Acceptance payload changed")
+        require(digest(candidate) == manifest["sha256"], "Verified candidate payload changed")
+        if previous_archive:
+            require(digest(previous_archive) == previous_checksum, "Previous archive changed during upgrade")
+            report["upgrade"].update(passed=True, sameProfileAndHistory=True, distinctProductionIdeProcesses=True)
         require(build_inputs()["sha256"] == report["buildInputsSha256"], "Source changed during desktop acceptance")
         report["renderedImages"] = {path.name: digest(path) for path in sorted(scratch.glob("*.png"))}
         report.update(passed=True, fullIdeProcessRestart=True, projectAndPluginDisposal=True,
-                      cleanProfileInstall=True, realAdapterInvoked=False, developerFilesHeadAndIndexUnchanged=True)
+                      cleanProfileInstall=previous_archive is None, realAdapterInvoked=real is not None, developerFilesHeadAndIndexUnchanged=True)
     except CheckFailed as failure:
         report["failure"] = str(failure)
         report["failedStep"] = step
@@ -198,7 +278,7 @@ def main(args):
     evidence = args.output.parent / scratch.name
     evidence.mkdir()
     for path in scratch.iterdir():
-        if path.is_file() and path.suffix in (".json", ".png", ".log"):
+        if path.is_file() and path.suffix in (".json", ".png", ".log", ".html"):
             shutil.copy2(path, evidence / path.name)
     report["evidenceDirectory"] = str(evidence)
     report["finishedAt"] = datetime.now(timezone.utc).isoformat()
@@ -214,4 +294,11 @@ if __name__ == "__main__":
     parser.add_argument("--java-home", type=Path, help="Defaults to JAVA_HOME (JDK 21)")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--reuse-session", type=Path)
+    parser.add_argument("--upgrade-from", type=Path, help="Run an older unmodified host ZIP, then replace it while retaining its profile and history")
+    parser.add_argument("--real-adapter", type=Path, help="Opt-in paid/native adapter execution against the candidate ZIP")
+    parser.add_argument("--adapter-sha256")
+    parser.add_argument("--model")
+    parser.add_argument("--allow-once", action="store_true", help="Allow only advertised one-time permissions for the owned real fixture")
+    parser.add_argument("--ide-terms-sha256", default=os.environ.get("FLOW_IDE_TERMS_SHA256"),
+                        help="Explicit user consent to these exact bundled IDE terms; never inferred from an isolated profile")
     sys.exit(main(parser.parse_args()))

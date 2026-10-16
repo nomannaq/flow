@@ -33,6 +33,7 @@ REQUIRED_TESTS = {
     "dev.flow.ui.SafeApplicationTest": {
         "testNativeMergeRenewedReviewApplyAndRollbackPreserveDeveloperWork",
         "testUnsavedTypingExternalWritesAndClosedBinaryPreconditions",
+        "testPlannedSavedDocumentSurvivesCollectionBeforeAuthorizedWrite",
     },
     "dev.flow.spikes.NativeCompatibilityTest": {
         "testHistoricalInputsSurviveLaterComparison", "testResolvedMergeReturnsExactOutput",
@@ -130,6 +131,43 @@ def host_gates(observations, identity):
     return gates
 
 
+def desktop_gates(evidence, identity):
+    require(evidence.get("passed") is True and evidence.get("target") == identity["target"] and
+            evidence.get("artifact", {}).get("sha256") == identity["archiveSha256"] and
+            evidence.get("buildInputsSha256") == identity["buildInputsSha256"] and
+            evidence.get("ideBuild") == identity["ideBuild"], "Desktop evidence does not match this accepted artifact/source/host")
+    phases = evidence.get("phases", [])
+    require(len(phases) >= 2 and all(p.get("passed") is True and type(p.get("idePid")) is int for p in phases) and
+            len({p["idePid"] for p in phases}) == len(phases), "Separate successful production IDE phases are required")
+    by_phase = {p.get("phase"): p for p in phases}
+    require(len(by_phase) == len(phases) and {"close", "unload"} <= by_phase.keys(), "Desktop lifecycle phases are missing or duplicated")
+    require(all(p.get("noAgentAutoResume") is True and p.get("renderedReadOnlyDiff0") is True and
+                p.get("renderedReadOnlyDiff1") is True for p in phases), "Immutable history restart evidence is incomplete")
+    require(by_phase["close"].get("projectDisposed") is True and by_phase["unload"].get("pluginUnloaded") is True and
+            all(p.get("engineAndDescendantsStopped") is True for p in phases), "Owned process cleanup evidence is incomplete")
+    gates = {name: {"status": "passed", "evidence": "Artifact-bound production IDE report"}
+             for name in ("ideRestartWithHistory", "projectCloseAndPluginUnload")}
+    if all(p.get("renderedMergeApplyAndCancel") is True for p in phases):
+        gates["renderedReadOnlyDiffAndMerge"] = {"status": "passed", "evidence": "Visible native read-only diff and merge Apply/Cancel actions"}
+    if evidence.get("upgrade", {}).get("passed") is True:
+        from check_desktop_acceptance import upgrade_versions
+        upgrade = evidence["upgrade"]
+        upgrade_versions(upgrade.get("fromVersion"), upgrade.get("toVersion"))
+        require("baseline" in by_phase and by_phase["baseline"].get("pluginVersion") == upgrade["fromVersion"] and
+                all(p.get("pluginVersion") == upgrade["toVersion"] for p in phases if p["phase"] != "baseline") and
+                upgrade.get("sameProfileAndHistory") is True, "Upgrade history or installed version proof missing")
+        gates["upgradeWithHistory"] = {"status": "passed", "evidence": "Older ZIP replaced between IDE exits; same profile and immutable history reopened"}
+    real = by_phase.get("real", {})
+    if evidence.get("realAdapterInvoked") is True:
+        require(real.get("realCodexTwoEdits") is True and real.get("realWriterShutdownVerified") is True and
+                re.fullmatch(r"[a-f0-9]{64}", evidence.get("adapterSha256", "")) is not None,
+                "Pinned real adapter evidence is incomplete")
+        gates["realPinnedAdapter"] = {"status": "passed", "evidence": "Checksum-pinned adapter submitted two native turns and verified writer shutdown"}
+    # Clean machines and real screen readers cannot be established by an
+    # isolated profile or by Swing accessibility metadata alone.
+    return gates
+
+
 def main(args):
     target = host_target()
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -192,12 +230,26 @@ def main(args):
         baseline = logs / "runtime-baseline.json"
         run("runtime-performance", ["cargo", "run", "-p", "runtime", "--example", "first_slice_bench", "--release", *cargo, "--", str(baseline), "--apply"])
         report["performance"] = capture_gate(json.loads(baseline.read_text()))
+        desktops = [args.desktop_evidence] if args.desktop_evidence else []
+        if args.desktop:
+            modes = [("clean", None)] + ([("upgrade", args.upgrade_from)] if args.upgrade_from else [])
+            for name, previous in modes:
+                output = args.output.parent / ("desktop-" + name) / "evidence.json"
+                command = [sys.executable, str(ROOT / "scripts/check_desktop_acceptance.py"), "--plugin", str(archive), "--output", str(output)]
+                if previous:
+                    command.extend(["--upgrade-from", str(previous.resolve())])
+                run("desktop-" + name, command)
+                desktops.append(output)
+        require(args.desktop or args.upgrade_from is None, "--upgrade-from requires --desktop")
         require(build_inputs() == before, "Build inputs changed during acceptance; rerun against a stable tree")
         identity = {"target": target, "archiveSha256": report["artifact"]["sha256"],
                     "buildInputsSha256": before["sha256"], "ideBuild": report["pluginVerifier"]["ideBuild"]}
         report["observationIdentity"] = identity
         observations = json.loads(args.observations.read_text()) if args.observations else None
         report["hostChecks"] = host_gates(observations, identity)
+        report["desktopEvidence"] = [str(path) for path in desktops]
+        for path in desktops:
+            report["hostChecks"].update(desktop_gates(json.loads(path.read_text()), identity))
         report["automatedPassed"] = True
         report["releaseAccepted"] = report["performance"]["status"] == "passed" and all(g["status"] == "passed" for g in report["hostChecks"].values())
     except (CheckFailed, OSError, ValueError, KeyError, StopIteration, subprocess.SubprocessError, ET.ParseError):
@@ -216,5 +268,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--observations", type=Path, help="Desktop checks tied to observationIdentity from a prior report")
+    parser.add_argument("--desktop-evidence", type=Path, help="Artifact-bound production IDE report; fills only directly observed automated host gates")
+    parser.add_argument("--desktop", action="store_true", help="Also run production IDE fixture acceptance; requires a desktop display")
+    parser.add_argument("--upgrade-from", type=Path, help="With --desktop, additionally run an unchanged older host ZIP upgrade")
     parser.add_argument("--require-release", action="store_true", help="Fail until performance and desktop gates pass")
     sys.exit(main(parser.parse_args()))
