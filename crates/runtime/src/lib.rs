@@ -10,7 +10,7 @@ pub mod recorder;
 pub mod review;
 pub mod worktrees;
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 #[allow(dead_code)]
 #[path = "../../../tests/support/repository.rs"]
 mod test_repository;

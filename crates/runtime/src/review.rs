@@ -11,7 +11,19 @@ use std::{
 };
 use worktrees::{Error, Result};
 
-fn verify(store: &HistoryStore, candidate: &Candidate, stopped: bool) -> Result<PreparedWorktree> {
+pub(crate) fn verify(
+    store: &HistoryStore,
+    candidate: &Candidate,
+    stopped: bool,
+) -> Result<PreparedWorktree> {
+    verify_recovery(store, candidate, stopped, Recovery::RefuseStale)
+}
+pub(crate) fn verify_recovery(
+    store: &HistoryStore,
+    candidate: &Candidate,
+    stopped: bool,
+    recovery: Recovery,
+) -> Result<PreparedWorktree> {
     if !stopped {
         return Err(Error::Invalid(
             "verify all session writers stopped before preparing or accepting a candidate",
@@ -31,8 +43,8 @@ fn verify(store: &HistoryStore, candidate: &Candidate, stopped: bool) -> Result<
     let root = state.state["projectRoot"]
         .as_str()
         .ok_or(Error::Invalid("project root unavailable"))?;
-    let manager = WorktreeManager::open(Path::new(root), store.clone(), Recovery::RefuseStale)?;
-    let prepared = manager.acquire(&session.workspace_id, Recovery::RefuseStale)?;
+    let manager = WorktreeManager::open(Path::new(root), store.clone(), recovery.clone())?;
+    let prepared = manager.acquire(&session.workspace_id, recovery)?;
     if prepared.preparation.baseline.as_ref() != Some(&candidate.baseline)
         || store.checkpoint(session.id)?.id != candidate.source
     {
@@ -304,5 +316,5 @@ async fn execute(root: &Path, args: &[String], seconds: u64) -> Result<Option<i3
     }
 }
 
-#[cfg(all(test, unix))]
-mod tests;
+#[cfg(test)]
+pub(crate) mod tests;

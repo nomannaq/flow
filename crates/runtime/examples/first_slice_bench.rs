@@ -305,7 +305,12 @@ fn application_bench(store: &HistoryStore, session: &SessionId, root: &Path) -> 
                         .map(|b| b.as_u64().unwrap() as u8)
                         .collect::<Vec<_>>();
                     fs::write(&path, bytes).unwrap();
-                    fs::File::open(path).unwrap().sync_all().unwrap();
+                    fs::File::options()
+                        .write(true)
+                        .open(path)
+                        .unwrap()
+                        .sync_all()
+                        .unwrap();
                     call(Method::ApplyReceipt, q);
                 }
                 call(

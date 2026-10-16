@@ -4,10 +4,12 @@ use protocol::{MutationKey, WorkspaceId};
 use std::{
     collections::BTreeMap,
     fs,
-    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
     path::{Component, Path, PathBuf},
     process::{Command, Output},
 };
+
+#[cfg(unix)]
+use std::os::unix::{ffi::OsStrExt, fs::PermissionsExt};
 
 pub struct Repository {
     pub temp: tempfile::TempDir,
@@ -34,7 +36,11 @@ impl Repository {
         Command::new("git")
             .args([
                 "-c",
-                "core.hooksPath=/dev/null",
+                if cfg!(windows) {
+                    "core.hooksPath=NUL"
+                } else {
+                    "core.hooksPath=/dev/null"
+                },
                 "-c",
                 "commit.gpgSign=false",
                 "-c",
@@ -48,7 +54,15 @@ impl Repository {
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("HOME", self.temp.path())
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .envs(
+                ["SYSTEMROOT", "WINDIR", "TEMP", "TMP"]
+                    .into_iter()
+                    .filter_map(|name| std::env::var_os(name).map(|value| (name, value))),
+            )
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_AUTHOR_NAME", "Flow Fixture")
             .env("GIT_AUTHOR_EMAIL", "fixture@example.invalid")
@@ -86,6 +100,7 @@ impl Repository {
         }
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(&target, bytes).unwrap();
+        #[cfg(unix)]
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
     }
 
@@ -158,6 +173,9 @@ fn scan(root: &Path, directory: &Path, files: &mut BTreeMap<String, FileInput>) 
             continue;
         }
         let (kind, bytes) = if metadata.file_type().is_symlink() {
+            #[cfg(windows)]
+            panic!("Windows fixture does not create symlinks");
+            #[cfg(unix)]
             (
                 FileKind::Symlink,
                 fs::read_link(&path)
@@ -171,11 +189,22 @@ fn scan(root: &Path, directory: &Path, files: &mut BTreeMap<String, FileInput>) 
             (FileKind::Regular, fs::read(&path).unwrap())
         };
         files.insert(
-            path.strip_prefix(root).unwrap().to_str().unwrap().into(),
+            path.strip_prefix(root)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace('\\', "/"),
             FileInput {
                 bytes,
                 kind,
+                #[cfg(unix)]
                 mode: metadata.permissions().mode() & 0o777,
+                #[cfg(windows)]
+                mode: if metadata.permissions().readonly() {
+                    0o444
+                } else {
+                    0o644
+                },
             },
         );
     }

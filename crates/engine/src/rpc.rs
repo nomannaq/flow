@@ -68,6 +68,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     store: Option<history::HistoryStore>,
     agents: &mut Option<runtime::agents::AgentHost>,
 ) -> io::Result<()> {
+    let application = std::sync::Arc::new(runtime::application::ApplyHost::default());
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
     let epoch = EngineEpoch::try_from(
@@ -253,16 +254,19 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             Err(()) => send(&mut output, failure(error::INVALID_PARAMS)).await?,
                         }
                     }
-                    Some(method @ (Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck | Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
+                    Some(method @ (Method::ApplyPlan | Method::ApplyGet | Method::ApplyList | Method::ApplyPreview | Method::ApplyResolve | Method::ApplyBegin | Method::ApplyAuthorize | Method::ApplyReceipt | Method::ApplyFinish | Method::ApplyCancel | Method::ApplyReconcile | Method::ApplyRollback | Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck | Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
                         let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
                         if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
                         let token = CancellationToken::new(); pending.insert(id.clone(), token.clone());
                         let epoch = epoch.clone();
+                        let application = application.clone();
                         jobs.push(Box::pin(async move {
                             // A timed-out archive may have committed. Retrying is idempotent;
                             // neither cancellation nor reconnect replays a new conversation.
                             let work = tokio::task::spawn_blocking(move || {
-                                if matches!(method, Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck) {
+                                if matches!(method, Method::ApplyPlan | Method::ApplyGet | Method::ApplyList | Method::ApplyPreview | Method::ApplyResolve | Method::ApplyBegin | Method::ApplyAuthorize | Method::ApplyReceipt | Method::ApplyFinish | Method::ApplyCancel | Method::ApplyReconcile | Method::ApplyRollback) {
+                                    application.request(store, method, request.params).map_err(|_|history::Error::Invalid("Application preconditions changed or recovery is required"))
+                                } else if matches!(method, Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck) {
                                     crate::candidates::request(store,method,request.params)
                                 } else {crate::session_history::request(store, method, request.params)}
                             });
@@ -687,6 +691,36 @@ mod tests {
             assert_eq!(c.read().await["error"]["code"], error::CANCELLED);
         }
         assert_eq!(c.read().await["id"], 100);
+        assert!(task.await.unwrap().is_ok());
+    }
+    #[tokio::test]
+    async fn b26_seeded_fragmented_frames_recover_without_echoing_private_input() {
+        let (mut c, task) = connection();
+        let epoch = c.initialize().await;
+        let mut seed = 26u64;
+        for case in 0..128 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let private = format!("private-fixture-token-{seed}");
+            let bad = format!("!{{\"secret\":\"{private}\"}}\n");
+            for chunk in bad.as_bytes().chunks(1 + (seed as usize % 17)) {
+                c.output.write_all(chunk).await.unwrap();
+            }
+            let reply = c.read().await;
+            assert_eq!(
+                reply["error"]["code"],
+                error::PARSE,
+                "seed={seed} case={case}"
+            );
+            assert!(!reply.to_string().contains(&private));
+            let frame = request(case, "engine.health", &epoch, json!({})).to_string() + "\r\n";
+            for chunk in frame.as_bytes().chunks(1 + (seed as usize % 31)) {
+                c.output.write_all(chunk).await.unwrap();
+            }
+            let reply = c.read().await;
+            assert_eq!(reply["id"], case, "seed={seed} case={case}");
+            assert!(reply.get("error").is_none());
+        }
+        drop(c);
         assert!(task.await.unwrap().is_ok());
     }
 }

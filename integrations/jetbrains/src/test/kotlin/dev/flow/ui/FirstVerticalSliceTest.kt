@@ -38,7 +38,10 @@ import javax.swing.tree.TreePath
 
 /** Real Swing listeners -> controller -> Rust -> ACP fixture -> immutable native diff requests. */
 class FirstVerticalSliceTest : LightPlatformTestCase() {
+    private var turnPageGate: CompletableDeferred<Unit>? = null
+    private var turnPageEntered = false
     private var filePageGate: CompletableDeferred<Unit>? = null
+    private val historyTrace = mutableListOf<String>()
     private val updateTimes = mutableListOf<Double>()
     private val diffTimes = mutableListOf<Double>()
     override fun runInDispatchThread() = false
@@ -78,8 +81,21 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
         suspend fun mount() = withContext(Dispatchers.EDT) {
             taskPanel = AgentSessionPanel(controller)
             historyPanel = SessionHistoryPanel(project, controller, scope, historyRequest = { method, params ->
-                if (method == "history.files") filePageGate?.await()
-                controller.historyRequest(method, params)
+                historyTrace.add("$method: entered")
+                try {
+                    if (method == "history.files") filePageGate?.await()
+                    if (method == "history.turns") {
+                        turnPageGate?.let {
+                            turnPageEntered = true
+                            it.await()
+                        }
+                    }
+                    historyTrace.add("$method: sent")
+                    controller.historyRequest(method, params).also { historyTrace.add("$method: received") }
+                } catch (failure: Exception) {
+                    historyTrace.add("$method: ${failure.javaClass.simpleName}")
+                    throw failure
+                }
             }, presentDiff = { requests.add(it) }, newConversation = { error("Review must not start a conversation") })
             mounted = true
             observer = scope.launch(Dispatchers.EDT) {
@@ -354,7 +370,20 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
         await("history connection") { button(panel, "Refresh sessions").isEnabled }
         withContext(Dispatchers.EDT) { click(panel, "Refresh sessions") }
         await("retained session") { list(panel, "Sessions").model.size == 1 }
-        withContext(Dispatchers.EDT) { list(panel, "Sessions").selectedIndex = 0 }
+        withContext(Dispatchers.EDT) {
+            turnPageEntered = false
+            turnPageGate = CompletableDeferred()
+            list(panel, "Sessions").selectedIndex = 0
+        }
+        await("turn page in flight") { turnPageEntered }
+        // A descendant query must not cancel the still-loading turns page.
+        withContext(Dispatchers.EDT) { click(panel, "All operations") }
+        await("operations while turns pending") { list(panel, "Recorded operations").model.size > 0 }
+        withContext(Dispatchers.EDT) {
+            turnPageGate!!.complete(Unit)
+            turnPageGate = null
+        }
+
         await("turns", { historyState(panel) }) { list(panel, "Turns in the selected session").model.size >= 2 }
         withContext(Dispatchers.EDT) { click(panel, "All operations") }
         await("operations") { list(panel, "Recorded operations").model.size > 0 }
@@ -414,7 +443,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
     }
 
     private fun historyState(panel: SessionHistoryPanel) = components(panel).filterIsInstance<JList<*>>().joinToString { "${it.accessibleContext.accessibleName}: count=${it.model.size}, selected=${it.selectedIndex}" } +
-        "; notes=" + components(panel).filterIsInstance<JTextComponent>().joinToString { it.text }
+        "; notes=" + components(panel).filterIsInstance<JTextComponent>().joinToString { it.text } + "; requests=" + historyTrace.takeLast(35).joinToString()
 
     private suspend fun await(description: String, diagnostic: () -> String = { "" }, condition: () -> Boolean) {
         try {
