@@ -165,8 +165,9 @@ text tasks in an isolated worktree. If native login is required, choose an
 advertised method and **Authenticate and retry**. Streamed replies are joined
 into readable text; the operation count reflects committed history. See the
 [Codex workflow](docs/codex-task-workflow.md) for compatibility limits and the
-opt-in real-agent acceptance command. Real-agent release acceptance is pending
-that check; fixture tests do not certify arbitrary adapters or account settings.
+opt-in real-agent acceptance command. The pinned packaged real-Codex run is
+recorded in the [B12 evidence](docs/first-vertical-slice.md#completing-the-remaining-acceptance-work--011);
+fixture tests do not certify arbitrary adapters or account settings.
 
 ### Retained sessions and local history (B14)
 
@@ -191,8 +192,8 @@ for paging, content identity checks, encoding limits and restart validation.
 The native platform test drives the actual Swing task, permission and history
 controls through the Rust engine and controlled ACP fixture. It checks consecutive
 edits, cancellation after a write, failure after changed bytes, immutable native
-diff requests after restart, and preservation of developer changes. Run instructions
-and the separate, still-required pinned Codex manual gate are in
+diff requests after restart, and preservation of developer changes. Packaged
+real-Codex results, run instructions and remaining release host checks are in
 [First vertical slice acceptance](docs/first-vertical-slice.md).
 
 ### Complete-result review and performance (B18/B27)
@@ -221,7 +222,7 @@ dependency notices in an OS/architecture-labelled ZIP. Windows packages target
 outside the checkout. Use `runIde -PflowBundledEngine=true` to exercise installed
 payload resolution in the development sandbox. `checkPackagedAgentSession` adds
 offline edits, immutable history and descendant-shutdown acceptance. See
-[Native engine packaging](docs/native-engine-packaging.md) for build commands,
+[Packaged native acceptance](docs/first-vertical-slice.md#completing-the-remaining-acceptance-work--011) for build commands,
 clean-machine acceptance and signing/distribution limits.
 
 ### Native engine bridge (B06)
@@ -398,6 +399,6 @@ commands, crash guarantees, storage accounting, and the recovery hook required b
 future change-application features.
 
 B26/B29 add seeded integrity regressions and package-bound release acceptance.
-The [desktop acceptance guide](docs/first-vertical-slice.md#packaged-desktop-acceptance--2026-10-16)
+The [desktop acceptance guide](docs/first-vertical-slice.md#completing-the-remaining-acceptance-work--011)
 describes full IDE restart, rendered historical diffs, process cleanup, CI commands
 and the remaining release gates.

@@ -306,3 +306,143 @@ identical installed release binary, then passed in the complete rerun. Its cause
 is unconfirmed; no timeout or assertion was weakened. The failed report and logs
 are retained under
 `integrations/jetbrains/build/release-acceptance/acceptance-1ra09ctg/`.
+
+## Completing the remaining acceptance work — 0.1.1
+
+The intermittent application timeout now has a confirmed cause and fix. IntelliJ
+caches clean documents weakly. Flow previously kept their stamps without keeping
+the documents alive across authorization RPCs; garbage collection could make an
+unchanged document disappear from that cache. The reproduced failure was
+`probe.txt 256 → null`, with unchanged disk bytes. `NativeApplication` now holds
+each planned document strongly and verifies its identity and stamp before writing.
+The existing 128-file / 64 KiB-per-file bound limits retained content. Unsaved,
+newer disk content, encoding and permission checks remain in place.
+
+`testPlannedSavedDocumentSurvivesCollectionBeforeAuthorizedWrite` failed against
+the original code and passed after the fix. The complete 0.1.1 native suite passed
+31 tests on both Apple Silicon macOS and Linux x86-64. The Linux run used a fresh
+network-disabled container and Xvfb; it is not a physical desktop-host observation.
+The old timeout evidence remains historical, and its formerly unconfirmed cause
+is superseded by this regression and the retained diagnostic reports under
+`integrations/jetbrains/build/apply-diagnosis/`.
+
+The version was advanced to 0.1.1 so upgrade acceptance exercises a genuine older
+plugin, not a same-version reinstall. `scripts/build_upgrade_baseline.py` builds
+the unchanged committed 0.1.0 source with `git archive` in temporary storage.
+It never checks out, commits or pushes. On macOS, its resulting archive exactly
+matched the preserved 0.1.0 ZIP. The upgrade runner starts that ZIP, closes its IDE,
+replaces only the owned installed Flow directory with 0.1.1, and opens the same
+profile, project and history in separate production IDE processes.
+
+Native merge checks now display the actual platform three-pane widget with
+read-only inputs and an editable in-memory output. They invoke Apply and Cancel
+through the native accessible actions, handle the widget's own exact confirmation
+dialogs, and assert the result enum and output bytes. Cancellation restores the
+original output; Apply returns the edited resolution. This is a rendering and
+callback check, paired with the existing complete-result apply/rollback safety
+test; the rendering fixture never writes a developer file. Keyboard tab actions,
+input names/roles and Flow's labeled accessible button actions are also checked.
+These semantic checks do not establish real screen-reader usability.
+
+The installed 0.1.1 ZIP also passed a new real `codex-acp` 0.5.2 two-turn native
+scenario with the pinned checksum and explicit `gpt-6-astra` override. The provider
+received a fresh synthetic repository containing only a disposable README and
+the fixed two-edit task. Staged, unstaged and untracked synthetic developer
+sentinels stayed outside its baseline. No checkout source or retained user history
+was sent. Only explicit `allowOnce` permission identities were approved. The exact
+two historical pairs remained visible after deleting the owned live file and
+after a complete IDE restart; writer shutdown, project disposal and dynamic unload
+all passed. A repeated-open harness race was fixed by waiting for the complete
+visible Before/After pair instead of matching text in either pane independently.
+
+Run the full automatic batch from the repository root with JDK 21:
+
+```sh
+python3 scripts/build_upgrade_baseline.py --offline \
+  --output integrations/jetbrains/build/upgrade-baseline
+python3 scripts/check_release_acceptance.py --offline --desktop \
+  --upgrade-from integrations/jetbrains/build/upgrade-baseline/flow-jetbrains-0.1.0-aarch64-apple-darwin.zip \
+  --output integrations/jetbrains/build/release-acceptance-011/evidence.json
+```
+
+Select the matching target ZIP on other operating systems; Linux needs a desktop
+display or `xvfb-run -a`. A fresh baseline output directory is required. Offline
+baseline builds reuse only the SDK catalog/artifact metadata, never an IDE profile.
+Omit `--offline` when dependencies are not cached. The four-host CI matrix builds
+the old ZIP and runs this same complete batch, retaining the desktop evidence.
+The workflow passes actionlint. Latest observed GitHub runs still stopped before
+creating any native jobs; no Windows or Intel Mac runner was available locally.
+
+To opt into a new paid/native real-adapter run, use the desktop runner with
+`--real-adapter`, `--adapter-sha256`, `--model` and `--allow-once`. Real mode rejects
+`--reuse-session` and creates its own synthetic project. Pass its successful
+`--output` report to the combined runner with `--desktop-evidence`. The combined
+runner verifies target, source inventory, archive and IDE identity before deriving
+restart, upgrade, rendered diff/merge, disposal and pinned-real-adapter gate results.
+It leaves clean-machine and real screen-reader observations pending.
+
+Fresh Linux IDE startup reached the SDK's Community Edition Terms v1.0. The
+preflight now reads the actual bundled document before opening the IDE and fails
+quickly if it has not been accepted. It retains `ide-agreement.html` and its hash.
+It never accepts terms by default. After explicit user review and consent,
+`--ide-terms-sha256` accepts only that exact document; a changed hash fails closed.
+CI owners can supply the same explicit consent through the repository variable
+`FLOW_IDE_TERMS_SHA256`. This is an IDE agreement requirement, not a passing Flow
+acceptance check. macOS already had this exact document accepted; its preflight
+was read-only. The user authorized the presented document for the disposable
+Linux environment on 2026-10-16. Its preflight accepted only SHA-256
+`bb5499dd8ab016880ca6cb31a9115dd6a63f452d8c9574e4e48d886a5b453197`;
+the user's macOS IDE settings were not changed.
+
+The auxiliary harness now verifies the actual payload path from `/proc` when
+Docker Desktop reports the Rosetta emulator as the process executable. It still
+checks the emulator link and exact installed binary path; focused probes accept
+the correct payload and reject another executable on Linux and macOS. Project
+close and dynamic unload use the SDK's non-modal context, avoiding the harness's
+earlier write-context warnings. These changes are outside the shipped plugin.
+On the emulated Xvfb display, use `JAVA_TOOL_OPTIONS=-Dsun.java2d.xrender=false`:
+the default XRender backend froze during painting. The exact committed Linux
+baseline was rebuilt from `e2735abdaf08d013a91b131077d8153daecfad5a`; an earlier
+preserved 0.1.0 Linux archive predates its compact-layout fix and was rejected as
+the input for this comparison.
+
+The final Linux production-IDE run passed all three phases: 0.1.0 baseline,
+0.1.1 upgrade/project close, and 0.1.1 dynamic unload. Both immutable historical
+diffs, compact controls, native merge Apply/Cancel, keyboard bindings, developer
+file preservation, restart and descendant cleanup passed. The final macOS
+upgrade rerun also passed. Neither final run logged a write-context warning.
+Reports and screenshots are retained under
+`integrations/jetbrains/build/linux-desktop-final/` and `mac-desktop-final/`.
+This remains an emulated Linux desktop check, not clean-machine or screen-reader
+acceptance. No additional real model session was invoked.
+
+Remaining external observations are native Windows x86-64 and Intel Mac execution,
+clean-machine desktop installation, and actual keyboard/screen-reader usability.
+Public signing/notarization remains a distribution task. These are not inferred
+from a clean profile, a container, metadata checks or the macOS results. G2 remains
+open until the required host observations pass; B15–B17 remain the next feature
+sequence after that gate.
+
+On each remaining native host, run the combined batch above with its matching
+ZIP and retain the report. For human checks, copy that host report's
+`observationIdentity` into an observations JSON with `checks.cleanInstall` and
+`checks.keyboardAndScreenReader`. Record the clean OS/VM and installation steps,
+exact package checksum, screen-reader name/version, keyboard navigation through
+Session/History/Review/Apply, and read-only diff/merge behavior in each check's
+`evidence`. Mark only observed checks passed, then supply the file with
+`--observations`; identities from another host or package are rejected.
+
+Final local validation passed: 105 Rust tests including examples, 31 macOS
+Kotlin/native tests, 15 Python tests, package smoke, strict dependency checks,
+formatting, Clippy, Plugin Verifier, fresh-profile desktop checks and the actual
+0.1.0 → 0.1.1 upgrade. Capture p95 was 249.25 ms over 20 samples, below 500 ms.
+The fresh real-adapter report has the same source inventory and ZIP hashes as
+the combined run. The subsequent harness-only follow-up has its own source
+inventory in the sanitized evidence; both release ZIP hashes remain unchanged.
+Five of seven macOS host gates now pass; clean-machine
+installation and real keyboard/screen-reader observations remain pending.
+See the [sanitized 0.1.1 evidence](release-acceptance-011-evidence.json).
+`releaseAccepted` is still false. An artifact-bound observation template for the
+remaining manual checks is retained at
+`integrations/jetbrains/build/manual-host-observations.json`. No commit, push,
+public signing or publication was performed.

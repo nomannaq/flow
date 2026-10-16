@@ -1,0 +1,525 @@
+{
+  "schemaVersion": 1,
+  "target": "aarch64-apple-darwin",
+  "baseRevision": "e2735abdaf08d013a91b131077d8153daecfad5a",
+  "startedAt": "2026-10-16T15:50:00.137076+00:00",
+  "finishedAt": "2026-10-16T15:54:51.423154+00:00",
+  "automatedPassed": true,
+  "releaseAccepted": false,
+  "artifact": {
+    "archive": "flow-jetbrains-0.1.1-aarch64-apple-darwin.zip",
+    "sha256": "fc8a55bad6145dbf1c2311e936fd607cdd896423130d4e2414437b5ce2720e2d",
+    "engineSha256": "b892475ac029f09b3e7190c3e0ec83fc4ecb8a7b2a1be8cd584b0df62bf7538e"
+  },
+  "native": {
+    "passed": true,
+    "tests": 31,
+    "skipped": 0,
+    "expectedPlatformSkips": [],
+    "classes": [
+      "dev.flow.bridge.EngineBridgeTest",
+      "dev.flow.bridge.EngineExecutableTest",
+      "dev.flow.bridge.ProtocolTest",
+      "dev.flow.spikes.NativeCompatibilityTest",
+      "dev.flow.ui.FirstVerticalSliceTest",
+      "dev.flow.ui.SafeApplicationTest"
+    ]
+  },
+  "rust": {
+    "testsIncludingExamples": 105,
+    "ignored": 0
+  },
+  "performance": {
+    "status": "passed",
+    "p95Ms": 249.254208,
+    "targetMs": 500,
+    "samples": 20
+  },
+  "pluginVerifier": {
+    "verdict": "Compatible. 4 usages of deprecated API. 6 usages of experimental API",
+    "ideBuild": "IU-253.33813.55"
+  },
+  "hostChecks": {
+    "cleanInstall": {
+      "status": "pending"
+    },
+    "ideRestartWithHistory": {
+      "status": "passed",
+      "evidence": "Artifact-bound production IDE report"
+    },
+    "upgradeWithHistory": {
+      "status": "passed",
+      "evidence": "Older ZIP replaced between IDE exits; same profile and immutable history reopened"
+    },
+    "renderedReadOnlyDiffAndMerge": {
+      "status": "passed",
+      "evidence": "Visible native read-only diff and merge Apply/Cancel actions"
+    },
+    "keyboardAndScreenReader": {
+      "status": "pending"
+    },
+    "projectCloseAndPluginUnload": {
+      "status": "passed",
+      "evidence": "Artifact-bound production IDE report"
+    },
+    "realPinnedAdapter": {
+      "status": "passed",
+      "evidence": "Checksum-pinned adapter submitted two native turns and verified writer shutdown"
+    }
+  },
+  "buildInputsSha256": "9dcf60e74e67be141b1f0b3250a6e6e9f3fe5087f94b5a19fc61f9be1e8b5167",
+  "flowDirtyAtRunStart": true,
+  "pythonTests": 15,
+  "realNativeAcceptance": {
+    "passed": true,
+    "artifact": {
+      "sha256": "fc8a55bad6145dbf1c2311e936fd607cdd896423130d4e2414437b5ce2720e2d",
+      "engineSha256": "b892475ac029f09b3e7190c3e0ec83fc4ecb8a7b2a1be8cd584b0df62bf7538e"
+    },
+    "buildInputsSha256": "9dcf60e74e67be141b1f0b3250a6e6e9f3fe5087f94b5a19fc61f9be1e8b5167",
+    "adapterSha256": "027e5c0646275ac6a52c09a8a51069f7b9ede69e96a99d4f5fd6eabbdb291524",
+    "modelOverride": "gpt-6-astra",
+    "historyMode": "fresh pinned real adapter; native submission and immutable reopen",
+    "phases": [
+      {
+        "passed": true,
+        "idePid": 47388,
+        "phase": "baseline",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.0",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          47393,
+          47468,
+          47469
+        ],
+        "projectDisposed": true,
+        "engineAndDescendantsStopped": true
+      },
+      {
+        "passed": true,
+        "idePid": 47479,
+        "phase": "close",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.1",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          47495,
+          47572,
+          47573
+        ],
+        "projectDisposed": true,
+        "engineAndDescendantsStopped": true
+      },
+      {
+        "passed": true,
+        "idePid": 47580,
+        "phase": "real",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.1",
+        "realWriterShutdownVerified": true,
+        "realSessionId": "session-a920cee34c0022c5d67e8516668f248a",
+        "realCodexTwoEdits": true,
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "realHistoricalDiffsAfterLiveDeletion": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          47584,
+          48337,
+          48338
+        ],
+        "projectDisposed": true,
+        "engineAndDescendantsStopped": true
+      },
+      {
+        "passed": true,
+        "idePid": 48349,
+        "phase": "unload",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.1",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          48353,
+          48445,
+          48446
+        ],
+        "pluginUnloaded": true,
+        "engineAndDescendantsStopped": true
+      }
+    ],
+    "upgrade": {
+      "passed": true,
+      "fromVersion": "0.1.0",
+      "toVersion": "0.1.1",
+      "previousArchiveSha256": "d0c37923d96aef473a0b9a74450302883e88834cfbee0cd2c83dd5b35eadb5a9",
+      "previousEngineSha256": "3d6dca82aabaca3eb8c7138a7e51d18454586bc36ad23f91ed337ce157521372",
+      "sameProfileAndHistory": true,
+      "distinctProductionIdeProcesses": true
+    },
+    "ideAgreement": {
+      "name": "euaCommunity",
+      "version": "1.0",
+      "sha256": "bb5499dd8ab016880ca6cb31a9115dd6a63f452d8c9574e4e48d886a5b453197",
+      "acceptedBefore": true,
+      "accepted": true,
+      "explicitHashProvided": false
+    },
+    "realAdapterInvoked": true,
+    "developerFilesHeadAndIndexUnchanged": true,
+    "renderedImages": {
+      "baseline-Apply-result.png": "2ea06a5f2095b179b34ca257ec60cb2324065f2d85ab465534e09f155168a76d",
+      "baseline-Review-result.png": "c5b2d82ff6c06fa41122e71c6fb3533501f76da057c2e0dbf22ee5f775eee9ed",
+      "baseline-diff-0.png": "e0e37b57478d959ceec1dc92728da9c9bf51daa40354633cf39110f4b52a756a",
+      "baseline-diff-1.png": "fef0ba5532e20368c5ad88130a77ee26da67562428ebb039cb148a7a495a523e",
+      "baseline-merge-apply.png": "e63feb0ff78db03856701ea8d4ca0ca739ff5897c9ccdab4480ae3eddd623401",
+      "baseline-merge-cancel.png": "e63feb0ff78db03856701ea8d4ca0ca739ff5897c9ccdab4480ae3eddd623401",
+      "close-Apply-result.png": "2ea06a5f2095b179b34ca257ec60cb2324065f2d85ab465534e09f155168a76d",
+      "close-Review-result.png": "c5b2d82ff6c06fa41122e71c6fb3533501f76da057c2e0dbf22ee5f775eee9ed",
+      "close-diff-0.png": "859631735da2086d1628baa2a40245ca0c91cd54fc965d4ecb45c688dfcfa7a5",
+      "close-diff-1.png": "3d88ed2441eaac9fb37ab5ef7d5eda4638238bb0df68a225e12b4d14a9e03a5b",
+      "close-merge-apply.png": "64d41c0579fb569babac240892b21a73f0c060ad5892af660744ff7e0c21ffd9",
+      "close-merge-cancel.png": "e63feb0ff78db03856701ea8d4ca0ca739ff5897c9ccdab4480ae3eddd623401",
+      "real-Apply-result.png": "2ea06a5f2095b179b34ca257ec60cb2324065f2d85ab465534e09f155168a76d",
+      "real-Review-result.png": "c5b2d82ff6c06fa41122e71c6fb3533501f76da057c2e0dbf22ee5f775eee9ed",
+      "real-diff-0.png": "7fe151d29274b97dd5d14361ce232e72214ba8c5ce6521c4abd0d567994746e6",
+      "real-diff-1.png": "bb6317d0ea648ab6802d019f986a4c4dc37bc92384caf6b9e819071bc71028d3",
+      "real-merge-apply.png": "d1af1736e8e9e98f31cf3e5a3f1859f63a39147c63f347094fc8af87a3f0418a",
+      "real-merge-cancel.png": "64d41c0579fb569babac240892b21a73f0c060ad5892af660744ff7e0c21ffd9",
+      "unload-Apply-result.png": "2ea06a5f2095b179b34ca257ec60cb2324065f2d85ab465534e09f155168a76d",
+      "unload-Review-result.png": "c5b2d82ff6c06fa41122e71c6fb3533501f76da057c2e0dbf22ee5f775eee9ed",
+      "unload-diff-0.png": "f0fe1d8e79a172d404181ac12c2df96cf353c38304e98d9b826e460d2470903c",
+      "unload-diff-1.png": "e7a9366a0006949faf6934fa821d14be6e33269a1e7aa23918647884d70605ec",
+      "unload-merge-apply.png": "d1af1736e8e9e98f31cf3e5a3f1859f63a39147c63f347094fc8af87a3f0418a",
+      "unload-merge-cancel.png": "b563fb74fd9e3fcb893fb2c18e56a6cc96e6954e090d649ea2ac96ff98472838"
+    },
+    "sourceAndArchiveMatchCombined": true
+  },
+  "linux": {
+    "environment": "Fresh network-disabled Linux x86-64 container under emulation on Apple Silicon, with Xvfb",
+    "native": {
+      "passed": true,
+      "tests": 31,
+      "skipped": 0,
+      "expectedPlatformSkips": [],
+      "classes": [
+        "dev.flow.bridge.EngineBridgeTest",
+        "dev.flow.bridge.EngineExecutableTest",
+        "dev.flow.bridge.ProtocolTest",
+        "dev.flow.spikes.NativeCompatibilityTest",
+        "dev.flow.ui.FirstVerticalSliceTest",
+        "dev.flow.ui.SafeApplicationTest"
+      ]
+    },
+    "artifact": {
+      "archive": "flow-jetbrains-0.1.1-x86_64-unknown-linux-gnu.zip",
+      "sha256": "f4ee536f9892fb9c29cb7415f529d5215b818df4845f4b0a64b459464e356478",
+      "engineSha256": "b2891839140490e07ce889a283dd4d897742aa36625a19db54440bef80fcd9e3"
+    },
+    "desktopPassed": true,
+    "ideAgreement": {
+      "name": "euaCommunity",
+      "version": "1.0",
+      "sha256": "bb5499dd8ab016880ca6cb31a9115dd6a63f452d8c9574e4e48d886a5b453197",
+      "acceptedBefore": true,
+      "accepted": true,
+      "explicitHashProvided": true
+    },
+    "cleanMachineAcceptance": false,
+    "initialAgreementAcceptance": {
+      "name": "euaCommunity",
+      "version": "1.0",
+      "sha256": "bb5499dd8ab016880ca6cb31a9115dd6a63f452d8c9574e4e48d886a5b453197",
+      "acceptedBefore": false,
+      "accepted": true,
+      "explicitHashProvided": true
+    },
+    "rendering": "Xvfb software Java2D rendering; JAVA_TOOL_OPTIONS=-Dsun.java2d.xrender=false",
+    "desktop": {
+      "passed": true,
+      "startedAt": "2026-10-16T18:00:26.741310+00:00",
+      "finishedAt": "2026-10-16T18:04:57.372841+00:00",
+      "ideBuild": "IU-253.33813.55",
+      "buildInputsSha256": "9efa3a581a22e086aab18a96c3123955e5da446aea3f6fd03145925c9c4c2721",
+      "harnessSha256": "465e1d1ad0b1f6604437368d5a84c1cc140af5f60a240e0c7b27b2810c04e0ac",
+      "phases": [
+        {
+          "passed": true,
+          "idePid": 178,
+          "phase": "baseline",
+          "engineExecutableIdentity": "Linux Rosetta /proc command line",
+          "noAgentAutoResume": true,
+          "pluginVersion": "0.1.0",
+          "renderedReadOnlyDiff0": true,
+          "renderedReadOnlyDiff1": true,
+          "compactReviewAndApplyControls": true,
+          "renderedMergeApplyAndCancel": true,
+          "accessibleNamesRolesAndActions": true,
+          "keyboardTabNavigation": true,
+          "ownedPids": [
+            363,
+            472,
+            479
+          ],
+          "projectDisposed": true,
+          "engineAndDescendantsStopped": true
+        },
+        {
+          "passed": true,
+          "idePid": 508,
+          "phase": "close",
+          "engineExecutableIdentity": "Linux Rosetta /proc command line",
+          "noAgentAutoResume": true,
+          "pluginVersion": "0.1.1",
+          "renderedReadOnlyDiff0": true,
+          "renderedReadOnlyDiff1": true,
+          "compactReviewAndApplyControls": true,
+          "renderedMergeApplyAndCancel": true,
+          "accessibleNamesRolesAndActions": true,
+          "keyboardTabNavigation": true,
+          "ownedPids": [
+            587,
+            779,
+            786
+          ],
+          "projectDisposed": true,
+          "engineAndDescendantsStopped": true
+        },
+        {
+          "passed": true,
+          "idePid": 806,
+          "phase": "unload",
+          "engineExecutableIdentity": "Linux Rosetta /proc command line",
+          "noAgentAutoResume": true,
+          "pluginVersion": "0.1.1",
+          "renderedReadOnlyDiff0": true,
+          "renderedReadOnlyDiff1": true,
+          "compactReviewAndApplyControls": true,
+          "renderedMergeApplyAndCancel": true,
+          "accessibleNamesRolesAndActions": true,
+          "keyboardTabNavigation": true,
+          "ownedPids": [
+            890,
+            1076,
+            1083
+          ],
+          "pluginUnloaded": true,
+          "engineAndDescendantsStopped": true
+        }
+      ],
+      "upgrade": {
+        "passed": true,
+        "fromVersion": "0.1.0",
+        "toVersion": "0.1.1",
+        "previousArchiveSha256": "f4ae9ca84f23bdcedaedc6c6e6d57d3b1b783716cf4d4ba9263899223ce19b72",
+        "previousEngineSha256": "d428b9860cb6f24af47fba44fee08dc7c63263f49e3b12a798ae25575e99b6d5",
+        "sameProfileAndHistory": true,
+        "distinctProductionIdeProcesses": true
+      },
+      "fullIdeProcessRestart": true,
+      "projectAndPluginDisposal": true,
+      "realAdapterInvoked": false,
+      "developerFilesHeadAndIndexUnchanged": true,
+      "renderedImages": {
+        "baseline-Apply-result.png": "546d1444a0fb9ce149cf456d7a219a4d6cc53da1991eb4e4819d03f63d30d750",
+        "baseline-Review-result.png": "5f267c3bc4cc364013d47e7dab1f9fa596feab19f65391fa6bba9a500bfd4438",
+        "baseline-diff-0.png": "2ae29ab6436b995cbe741ff5dbe9771c9f0de473dd33ea515f461ee68270ad2a",
+        "baseline-diff-1.png": "8f98041d32ae0d6211371cac25554e65cba26a800d3f2eb4d31e60e6c8406877",
+        "baseline-merge-apply.png": "9461563bdc114cc8ab94e974ebf919ca2af5a08f8b5df25fbfb51d166008eac0",
+        "baseline-merge-cancel.png": "9461563bdc114cc8ab94e974ebf919ca2af5a08f8b5df25fbfb51d166008eac0",
+        "close-Apply-result.png": "086eea69583088159e7ff68c7e4b7715de021e451dc84550115acf11356f2469",
+        "close-Review-result.png": "6c4cc0af21298db7f63936a488e60a78c25327a431437d0e23c21415a603b8aa",
+        "close-diff-0.png": "67e98cad380708bbb5c31efeed8534d8e741d9ac359273031d5b2fdb6ddf5445",
+        "close-diff-1.png": "9da901eacc753c1eca4942d5501ca18db925221dd690ad3997bcd162468e2ea0",
+        "close-merge-apply.png": "f01870147baae1b0dd4499501c718c3c89a6e71665e5e824cfa3b1fee97f71b6",
+        "close-merge-cancel.png": "9461563bdc114cc8ab94e974ebf919ca2af5a08f8b5df25fbfb51d166008eac0",
+        "unload-Apply-result.png": "086eea69583088159e7ff68c7e4b7715de021e451dc84550115acf11356f2469",
+        "unload-Review-result.png": "6c4cc0af21298db7f63936a488e60a78c25327a431437d0e23c21415a603b8aa",
+        "unload-diff-0.png": "1e87d8ca3275f4a227d90f18154304f9fa5d0615ab3fcb4504f4171c0df1c2b3",
+        "unload-diff-1.png": "e83b685984e04c156e0dff039c28cc88a6a8a09f13f0863d0936201027349324",
+        "unload-merge-apply.png": "9461563bdc114cc8ab94e974ebf919ca2af5a08f8b5df25fbfb51d166008eac0",
+        "unload-merge-cancel.png": "9461563bdc114cc8ab94e974ebf919ca2af5a08f8b5df25fbfb51d166008eac0"
+      },
+      "humanChecks": {
+        "cleanMachineInstall": "pending",
+        "keyboardAndScreenReader": "pending"
+      },
+      "hostChecks": {
+        "ideRestartWithHistory": {
+          "status": "passed",
+          "evidence": "Artifact-bound production IDE report"
+        },
+        "projectCloseAndPluginUnload": {
+          "status": "passed",
+          "evidence": "Artifact-bound production IDE report"
+        },
+        "renderedReadOnlyDiffAndMerge": {
+          "status": "passed",
+          "evidence": "Visible native read-only diff and merge Apply/Cancel actions"
+        },
+        "upgradeWithHistory": {
+          "status": "passed",
+          "evidence": "Older ZIP replaced between IDE exits; same profile and immutable history reopened"
+        }
+      },
+      "writeContextWarnings": false
+    },
+    "baselineBuild": {
+      "revision": "e2735abdaf08d013a91b131077d8153daecfad5a",
+      "pluginVersion": "0.1.0",
+      "archive": "flow-jetbrains-0.1.0-x86_64-unknown-linux-gnu.zip",
+      "sha256": "f4ae9ca84f23bdcedaedc6c6e6d57d3b1b783716cf4d4ba9263899223ce19b72",
+      "sourceArchiveSha256": "e8e2817e44e7fff39f0e26224e484ee46a984615903d9e5a29621c9eae46d114",
+      "method": "git archive extracted with host Python data filter; strict offline Gradle build in Linux container"
+    }
+  },
+  "regression": {
+    "test": "SafeApplicationTest.testPlannedSavedDocumentSurvivesCollectionBeforeAuthorizedWrite",
+    "original": "failed after clean document was garbage-collected",
+    "fixed": "passed; planned buffers now retained with identity and modification-stamp guards",
+    "source": "integrations/jetbrains/src/main/kotlin/dev/flow/ui/NativeApplication.kt"
+  },
+  "workflowValidation": {
+    "actionlint": "passed",
+    "nativeHostedJobsExecuted": false,
+    "latestKnownFailure": "native-ci-startup-failure.json"
+  },
+  "remaining": [
+    "native Windows x86-64 execution",
+    "native Intel macOS execution",
+    "clean-machine desktop installation",
+    "actual keyboard/screen-reader usability",
+    "public signing/notarization"
+  ],
+  "localReports": [
+    "integrations/jetbrains/build/release-acceptance-011/evidence.json",
+    "integrations/jetbrains/build/real-packaged-acceptance/evidence.json",
+    "integrations/jetbrains/build/linux-native-final/",
+    "integrations/jetbrains/build/linux-agreement-preflight/evidence.json",
+    "integrations/jetbrains/build/linux-desktop-final/evidence.json",
+    "integrations/jetbrains/build/mac-desktop-final/evidence.json",
+    "integrations/jetbrains/build/linux-exact-baseline/baseline.json",
+    "integrations/jetbrains/build/engine-identity-probes"
+  ],
+  "followUpValidation": {
+    "buildInputsSha256": "9efa3a581a22e086aab18a96c3123955e5da446aea3f6fd03145925c9c4c2721",
+    "scope": "Auxiliary desktop harness changes only; release ZIPs and shipped plugin code unchanged from the original combined/real-adapter run",
+    "originalCombinedAndRealAdapterBuildInputsSha256": "9dcf60e74e67be141b1f0b3250a6e6e9f3fe5087f94b5a19fc61f9be1e8b5167",
+    "macDesktopUpgradePassed": true,
+    "macFinishedAt": "2026-10-16T18:01:11.442954+00:00",
+    "macArtifact": {
+      "sha256": "fc8a55bad6145dbf1c2311e936fd607cdd896423130d4e2414437b5ce2720e2d",
+      "engineSha256": "b892475ac029f09b3e7190c3e0ec83fc4ecb8a7b2a1be8cd584b0df62bf7538e"
+    },
+    "macPhases": [
+      {
+        "passed": true,
+        "idePid": 72851,
+        "phase": "baseline",
+        "engineExecutableIdentity": "native executable path",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.0",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          72856,
+          72931,
+          72932
+        ],
+        "projectDisposed": true,
+        "engineAndDescendantsStopped": true
+      },
+      {
+        "passed": true,
+        "idePid": 72939,
+        "phase": "close",
+        "engineExecutableIdentity": "native executable path",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.1",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          72944,
+          73022,
+          73023
+        ],
+        "projectDisposed": true,
+        "engineAndDescendantsStopped": true
+      },
+      {
+        "passed": true,
+        "idePid": 73039,
+        "phase": "unload",
+        "engineExecutableIdentity": "native executable path",
+        "noAgentAutoResume": true,
+        "pluginVersion": "0.1.1",
+        "renderedReadOnlyDiff0": true,
+        "renderedReadOnlyDiff1": true,
+        "compactReviewAndApplyControls": true,
+        "renderedMergeApplyAndCancel": true,
+        "accessibleNamesRolesAndActions": true,
+        "keyboardTabNavigation": true,
+        "ownedPids": [
+          73043,
+          73126,
+          73127
+        ],
+        "pluginUnloaded": true,
+        "engineAndDescendantsStopped": true
+      }
+    ],
+    "macHostChecks": {
+      "ideRestartWithHistory": {
+        "status": "passed",
+        "evidence": "Artifact-bound production IDE report"
+      },
+      "projectCloseAndPluginUnload": {
+        "status": "passed",
+        "evidence": "Artifact-bound production IDE report"
+      },
+      "renderedReadOnlyDiffAndMerge": {
+        "status": "passed",
+        "evidence": "Visible native read-only diff and merge Apply/Cancel actions"
+      },
+      "upgradeWithHistory": {
+        "status": "passed",
+        "evidence": "Older ZIP replaced between IDE exits; same profile and immutable history reopened"
+      }
+    },
+    "macWriteContextWarnings": false,
+    "engineIdentityProbes": {
+      "macOS": "Correct payload accepted; different payload rejected",
+      "LinuxRosetta": "Correct payload accepted; different payload rejected"
+    },
+    "pythonTests": 15,
+    "gitDiffCheck": "passed",
+    "realAdapterInvokedThisFollowUp": false,
+    "releaseAccepted": false
+  }
+}

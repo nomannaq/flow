@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from check_codex_session import CheckFailed
-from check_desktop_acceptance import cached_ide, ide_metadata, java_command, project_bytes
+from check_desktop_acceptance import cached_ide, ide_metadata, java_command, project_bytes, upgrade_versions
 from native_platform import host_target
 
 
@@ -22,7 +22,7 @@ class DesktopAcceptanceTest(unittest.TestCase):
             home, _, selected = ide_metadata(root)
             self.assertEqual(root, home)
             command = java_command(root / "jdk", home, selected, root / "scratch", "close", root / "project", root / "data",
-                                   {"filename": "probe.txt", "sessionId": "owned", "versions": ["one\n", "two\n"], "installedEngine": str(root / "verified engine")})
+                                   {"filename": "probe.txt", "sessionId": "owned", "versions": ["one\n", "two\n"], "installedEngine": str(root / "verified engine"), "pluginVersion": "0.1.1"})
             self.assertIn(f"-Didea.config.path={root / 'scratch/config'}", command)
             self.assertIn(f"-Didea.plugins.path={root / 'scratch/plugins with spaces'}", command)
             self.assertIn("-Dflow.acceptance.version1=one\n", command)
@@ -65,6 +65,12 @@ class DesktopAcceptanceTest(unittest.TestCase):
             (root / ".git/index").write_bytes(b"index")
             (root / "dangling").symlink_to(root / "unreadable-outside")
             self.assertEqual({"symlink": str(root / "unreadable-outside")}, project_bytes(root)["dangling"])
+
+    def test_upgrade_requires_an_actually_older_release(self):
+        upgrade_versions("0.1.9", "0.1.10")
+        for old, new in [("0.1.0", "0.1.0"), ("0.2.0", "0.1.1"), ("0.1.0-dev", "0.1.1"), ("01.1.0", "1.1.1")]:
+            with self.subTest(old=old, new=new), self.assertRaises(CheckFailed):
+                upgrade_versions(old, new)
 
 
 if __name__ == "__main__":

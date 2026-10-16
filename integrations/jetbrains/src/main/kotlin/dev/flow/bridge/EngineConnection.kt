@@ -68,7 +68,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
     suspend fun initialize(projectId: ProjectId): InitializeResult {
         val reply = request(
             "engine.initialize",
-            ProtocolJson.initialize(InitializeParams(1, "Flow JetBrains", "0.1.0", projectId)),
+            ProtocolJson.initialize(InitializeParams(1, "Flow JetBrains", "0.1.1", projectId)),
         )
         val result = ProtocolJson.initialized(reply.asJsonObject)
         require(result.projectId == projectId)

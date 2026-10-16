@@ -40,5 +40,24 @@
   },
   "jobLogsAvailable": false,
   "diagnosis": "GitHub failed before creating the native job matrix. The workflow file is present and passes actionlint; the backend root cause is unconfirmed.",
-  "remainingAction": "Repository owner must restore GitHub Actions workflow registration/dispatch, or supply existing native test runners. Windows and Intel Mac acceptance remain pending; do not treat this startup failure as a platform test result."
+  "remainingAction": "Repository owner must restore GitHub Actions workflow registration/dispatch, or supply existing native test runners. Windows and Intel Mac acceptance remain pending; do not treat this startup failure as a platform test result.",
+  "latestObservedAttempt": {
+    "commit": "e2735abdaf08d013a91b131077d8153daecfad5a",
+    "runId": 38921734611,
+    "url": "https://github.com/nomannaq/flow/actions/runs/38921734611",
+    "headBranch": "staging",
+    "conclusion": "startup_failure",
+    "path": "BuildFailed",
+    "checkSuiteId": 105481181422,
+    "jobs": 0,
+    "checkRuns": 0
+  },
+  "latestRunnerInventory": {
+    "selfHostedRunners": 0,
+    "localAvailableHosts": [
+      "Apple Silicon macOS",
+      "Linux x86-64 container under emulation"
+    ],
+    "nativeWindowsOrIntelMacObserved": false
+  }
 }

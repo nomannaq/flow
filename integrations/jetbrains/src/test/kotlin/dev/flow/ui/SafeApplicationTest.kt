@@ -281,6 +281,46 @@ class SafeApplicationTest : LightPlatformTestCase() {
             Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
         }
     }
+    fun testPlannedSavedDocumentSurvivesCollectionBeforeAuthorizedWrite() = runBlocking {
+        val root = Files.createTempDirectory("flow-planned-document-").toRealPath()
+        withContext(Dispatchers.EDT) { VfsRootAccess.allowRootAccess(testRootDisposable, root.toString()) }
+        val path = root.resolve("saved.txt")
+        Files.writeString(path, "before\n")
+        try {
+            withContext(Dispatchers.EDT) {
+                val native = NativeApplication(project, root)
+                val vf = requireNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path))
+                fun captureSaved(): java.lang.ref.WeakReference<com.intellij.openapi.editor.Document> {
+                    val document = requireNotNull(FileDocumentManager.getInstance().getDocument(vf))
+                    native.capture(
+                        JsonObject().apply {
+                            addProperty("id", "native-plan")
+                            addProperty("root", root.toString())
+                            add(
+                                "files",
+                                JsonArray().apply {
+                                    add(
+                                        JsonObject().apply {
+                                            addProperty("path", "saved.txt")
+                                            addProperty("status", "todo")
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                    return java.lang.ref.WeakReference(document)
+                }
+                val captured = captureSaved()
+                repeat(3) { System.gc() }
+                assertNotNull("Planning must retain the clean buffer until the authorized write", captured.get())
+                native.write(ticket("saved.txt", "before\n".toByteArray(), "after\n".toByteArray()))
+                assertEquals("after\n", Files.readString(path))
+            }
+        } finally {
+            Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
     private fun ticket(path: String, before: ByteArray?, after: ByteArray?) = JsonObject().apply {
         addProperty("planId", "native-plan")
         addProperty("fileIndex", 0)

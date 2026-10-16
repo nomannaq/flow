@@ -25,11 +25,16 @@ jobs:
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    env:
+      # Set only after the repository owner reviews the exact bundled IDE terms.
+      FLOW_IDE_TERMS_SHA256: ${{ vars.FLOW_IDE_TERMS_SHA256 }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -42,21 +47,14 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
+      - name: Build unchanged previous release for real upgrade acceptance
+        run: python scripts/build_upgrade_baseline.py --output integrations/jetbrains/build/upgrade-baseline
       - name: Run B26 integrity and B29 packaged acceptance
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a python scripts/check_release_acceptance.py --output integrations/jetbrains/build/release-acceptance/evidence.json
+            xvfb-run -a python scripts/check_release_acceptance.py --desktop --upgrade-from integrations/jetbrains/build/upgrade-baseline/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/release-acceptance/evidence.json
           else
-            python scripts/check_release_acceptance.py --output integrations/jetbrains/build/release-acceptance/evidence.json
-          fi
-      # A separate production IDE process verifies startup and dynamic disposal;
-      # this is an offline fixture, independent of the opt-in real model gate.
-      - name: Check installed plugin in full IDE processes
-        run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a python scripts/check_desktop_acceptance.py --plugin integrations/jetbrains/build/distributions/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/desktop-acceptance/evidence.json
-          else
-            python scripts/check_desktop_acceptance.py --plugin integrations/jetbrains/build/distributions/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/desktop-acceptance/evidence.json
+            python scripts/check_release_acceptance.py --desktop --upgrade-from integrations/jetbrains/build/upgrade-baseline/*-${{ matrix.target }}.zip --output integrations/jetbrains/build/release-acceptance/evidence.json
           fi
       - name: Retain platform package after native acceptance
         uses: actions/upload-artifact@v4
@@ -72,6 +70,7 @@ jobs:
           path: |
             integrations/jetbrains/build/release-acceptance/
             integrations/jetbrains/build/desktop-acceptance/
+            integrations/jetbrains/build/upgrade-baseline/baseline.json
             integrations/jetbrains/build/reports/
             integrations/jetbrains/build/test-results/
             integrations/jetbrains/build/native-engine/distribution.json

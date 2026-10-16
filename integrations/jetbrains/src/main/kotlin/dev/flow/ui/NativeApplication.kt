@@ -3,6 +3,7 @@ package dev.flow.ui
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -18,7 +19,9 @@ import java.nio.file.attribute.BasicFileAttributes
 
 /** All methods run on the EDT. Nothing saves an already-unsaved document. */
 internal class NativeApplication(private val project: Project, private val projectRoot: Path = Path.of(requireNotNull(project.basePath))) {
-    private data class Target(val documentStamp: Long?, val parents: Map<Path, Any?>, val index: Int)
+    // The IDE caches clean documents weakly. Keep each planned buffer alive
+    // through authorization, so collection cannot look like a developer edit.
+    private data class Target(val document: Document?, val documentStamp: Long?, val parents: Map<Path, Any?>, val index: Int)
     private val targets = mutableMapOf<String, Target>()
     private var root: Path? = null
     private var planId: String? = null
@@ -43,7 +46,7 @@ internal class NativeApplication(private val project: Project, private val proje
             val stamp = document?.modificationStamp
             if (stamp != null) stamps.addProperty(relative, stamp)
             check(relative !in targets)
-            targets[relative] = Target(stamp, parents(target), index)
+            targets[relative] = Target(document, stamp, parents(target), index)
         }
         return stamps
     }
@@ -65,7 +68,7 @@ internal class NativeApplication(private val project: Project, private val proje
                 var vf = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
                 vf?.refresh(false, false)
                 val document = vf?.let { FileDocumentManager.getInstance().getCachedDocument(it) }
-                check(document?.modificationStamp == captured.documentStamp) { "Document changed after application planning" }
+                check(document === captured.document && document?.modificationStamp == captured.documentStamp) { "Document changed after application planning" }
                 check(document == null || !FileDocumentManager.getInstance().isDocumentUnsaved(document)) { "Unsaved document preserved" }
                 check(same(read(path), expected)) { "Newer disk content preserved" }
                 if (expected != null) check(mode(path) == ticket["beforeMode"].asInt) { "File permissions changed" }

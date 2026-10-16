@@ -3,14 +3,20 @@ package dev.flow.acceptance;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.ide.impl.ProjectUtil;
+import com.intellij.diff.DiffManager;
+import com.intellij.diff.DiffRequestFactory;
+import com.intellij.diff.merge.MergeResult;
 import com.intellij.ide.plugins.DynamicPlugins;
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ApplicationStarter;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.command.WriteCommandAction;
+import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
@@ -26,6 +32,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.accessibility.AccessibleRole;
 import javax.imageio.ImageIO;
 import kotlinx.coroutines.flow.StateFlow;
 import javax.swing.JButton;
@@ -51,12 +59,18 @@ public final class AcceptanceStarter implements ApplicationStarter {
         if (!value) throw new IllegalStateException(message);
     }
     private static <T> T edt(Callable<T> task) throws Exception {
+        return edt(task, ModalityState.any());
+    }
+    private static <T> T edt(Callable<T> task, ModalityState modality) throws Exception {
         var future = new FutureTask<T>(task);
-        ApplicationManager.getApplication().invokeAndWait(future);
+        ApplicationManager.getApplication().invokeAndWait(future, modality);
         return future.get();
     }
     private static void await(Callable<Boolean> condition) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+        await(condition, 60);
+    }
+    private static void await(Callable<Boolean> condition, int seconds) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(seconds).toNanos();
         while (!condition.call()) {
             check(System.nanoTime() < deadline, "Acceptance condition timed out");
             Thread.sleep(50);
@@ -75,6 +89,10 @@ public final class AcceptanceStarter implements ApplicationStarter {
     private JList<?> list(String name) {
         return components(panel).stream().filter(c -> c instanceof JList<?> && c.getAccessibleContext() != null && name.equals(c.getAccessibleContext().getAccessibleName()))
             .map(c -> (JList<?>)c).findFirst().orElseThrow();
+    }
+    private JTextComponent field(String name) {
+        return components(panel).stream().filter(c -> c instanceof JTextComponent && c.getAccessibleContext() != null
+            && name.equals(c.getAccessibleContext().getAccessibleName())).map(c -> (JTextComponent)c).findFirst().orElseThrow();
     }
     private void click(String name) {
         var b = button(name);
@@ -100,6 +118,33 @@ public final class AcceptanceStarter implements ApplicationStarter {
         Long pid = (Long)v.getClass().getMethod("getPid").invoke(v);
         return pid == null ? null : ProcessHandle.of(pid).orElse(null);
     }
+    private Window displayedPair(String before, String after) {
+        for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
+            if (!editor.isViewer() || !after.equals(editor.getDocument().getText()) || !editor.getComponent().isShowing()) continue;
+            Window window = javax.swing.SwingUtilities.getWindowAncestor(editor.getComponent());
+            if (window != null && window.isShowing() && java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors())
+                .anyMatch(e -> e.isViewer() && before.equals(e.getDocument().getText()) && e.getComponent().isShowing()
+                    && javax.swing.SwingUtilities.getWindowAncestor(e.getComponent()) == window)) return window;
+        }
+        return null;
+    }
+    private void verifyEnginePayload(ProcessHandle process) throws Exception {
+        Path expected = Path.of(System.getProperty("flow.acceptance.engine")).toRealPath();
+        Path command = Path.of(process.info().command().orElseThrow());
+        String identity = "native executable path";
+        if (System.getProperty("os.name").equals("Linux") && command.equals(Path.of("/run/rosetta/rosetta"))) {
+            // Docker Desktop's emulator is /proc/exe; argv[0] retains the actual payload.
+            Path proc = Path.of("/proc", Long.toString(process.pid()));
+            check(Files.readSymbolicLink(proc.resolve("exe")).equals(command), "Unexpected emulator executable");
+            String argv = Files.readString(proc.resolve("cmdline"));
+            int end = argv.indexOf('\0');
+            check(end > 0, "Missing emulated payload command");
+            command = Path.of(argv.substring(0, end));
+            identity = "Linux Rosetta /proc command line";
+        }
+        check(command.toRealPath().equals(expected), "IDE launched a different engine payload");
+        result.addProperty("engineExecutableIdentity", identity);
+    }
     private void mount() throws Exception {
         project = ProjectUtil.openOrImport(Path.of(System.getProperty("flow.acceptance.project")));
         check(project != null, "Owned acceptance project could not open");
@@ -111,18 +156,22 @@ public final class AcceptanceStarter implements ApplicationStarter {
             return null;
         });
         await(() -> edt(() -> engine() != null && engine().isAlive()));
-        check(edt(() -> Path.of(engine().info().command().orElseThrow()).toRealPath()).equals(Path.of(System.getProperty("flow.acceptance.engine")).toRealPath()), "IDE launched a different engine payload");
+        verifyEnginePayload(edt(this::engine));
         check(edt(() -> agentField("getId")) == null, "History reopen auto-started an agent");
         result.addProperty("noAgentAutoResume", true);
+        String version = edt(() -> PluginManagerCore.getPlugin(PluginId.getId("dev.flow.workbench")).getVersion());
+        check(version.equals(System.getProperty("flow.acceptance.pluginVersion")), "Installed plugin version differs from selected archive");
+        result.addProperty("pluginVersion", version);
     }
     private void historicalDiffs() throws Exception {
         step = "rendered historical diffs";
         edt(() -> {
             components(panel).stream().filter(c -> c instanceof JTabbedPane).map(c -> (JTabbedPane)c)
                 .filter(t -> t.indexOfTab("History") >= 0).findFirst().orElseThrow().setSelectedIndex(1);
-            click("Refresh sessions");
             return null;
         });
+        await(() -> edt(() -> button("Refresh sessions").isEnabled()));
+        edt(() -> { click("Refresh sessions"); return null; });
         await(() -> edt(() -> list("Sessions").getModel().getSize() > 0));
         edt(() -> {
             var rows = list("Sessions");
@@ -158,19 +207,15 @@ public final class AcceptanceStarter implements ApplicationStarter {
             final int index = matched++;
             edt(() -> { click("Open historical diff"); return null; });
             String expected = System.getProperty("flow.acceptance.version" + (index + 1));
-            await(() -> edt(() -> java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors())
-                .anyMatch(e -> e.isViewer() && expected.equals(e.getDocument().getText()) && e.getComponent().isShowing())));
+            String before = index == 0 ? "" : System.getProperty("flow.acceptance.version1");
+            await(() -> edt(() -> displayedPair(before, expected) != null));
             edt(() -> {
-                Editor editor = java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors())
-                    .filter(e -> e.isViewer() && expected.equals(e.getDocument().getText()) && e.getComponent().isShowing()).findFirst().orElseThrow();
-                var window = javax.swing.SwingUtilities.getWindowAncestor(editor.getComponent());
-                check(window != null && window.isShowing(), "Historical diff is not displayed in a native window");
+                var window = displayedPair(before, expected);
+                check(window != null, "Historical diff is not displayed with both exact read-only inputs");
                 var image = new BufferedImage(window.getWidth(), window.getHeight(), BufferedImage.TYPE_INT_RGB);
                 var graphics = image.createGraphics();
                 try { window.paint(graphics); } finally { graphics.dispose(); }
                 ImageIO.write(image, "png", output.resolveSibling(System.getProperty("flow.acceptance.phase") + "-diff-" + index + ".png").toFile());
-                String before = index == 0 ? "" : System.getProperty("flow.acceptance.version1");
-                check(java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors()).anyMatch(e -> e.isViewer() && before.equals(e.getDocument().getText()) && e.getComponent().isShowing() && javax.swing.SwingUtilities.getWindowAncestor(e.getComponent()) == window), "Historical before bytes differ in the rendered diff");
                 result.addProperty("renderedReadOnlyDiff" + index, true);
                 return null;
             });
@@ -223,20 +268,176 @@ public final class AcceptanceStarter implements ApplicationStarter {
             click("Use current commit");
             return null;
         });
-        await(() -> edt(() -> button("Start Codex session").isEnabled()));
+        await(() -> edt(() -> button("Start Codex session").isEnabled() && field("Clean baseline commit").getText().matches("[a-fA-F0-9]{40}|[a-fA-F0-9]{64}")));
         edt(() -> { click("Start Codex session"); return null; });
         await(() -> edt(() -> "running".equals(agentField("getStatus")) && engine().descendants().count() >= 2));
+    }
+    private void realCodex() throws Exception {
+        step = "checksum-pinned real Codex native submission";
+        Path adapter = Path.of(System.getProperty("flow.acceptance.adapter"));
+        String expectedHash = System.getProperty("flow.acceptance.adapterSha256");
+        String actualHash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(adapter)));
+        check(actualHash.equals(expectedHash), "Pinned real adapter bytes changed");
+        edt(() -> {
+            var tabs = components(panel).stream().filter(c -> c instanceof JTabbedPane).map(c -> (JTabbedPane)c)
+                .filter(t -> t.indexOfTab("Session") >= 0).findFirst().orElseThrow();
+            tabs.setSelectedIndex(0);
+            field("ACP adapter executable").setText(adapter.toString());
+            field("Advanced adapter arguments").setText("[]");
+            field("Model override").setText(System.getProperty("flow.acceptance.model"));
+            field("Task prompt").setText("Create flow-b29.txt containing exactly \"version 1\" followed by a newline. Do not edit other files.");
+            click("Use current commit");
+            return null;
+        });
+        await(() -> edt(() -> button("Start Codex session").isEnabled() && field("Clean baseline commit").getText().matches("[a-fA-F0-9]{40}|[a-fA-F0-9]{64}")));
+        edt(() -> { click("Start Codex session"); return null; });
+        var answered = new java.util.HashSet<String>();
+        for (int turn = 1; turn <= 2; turn++) {
+            final String expected = "version " + turn + "\n";
+            await(() -> edt(() -> {
+                String status = (String)agentField("getStatus");
+                check(!List.of("failed", "authenticationRequired", "closed", "interrupted").contains(status), "Real adapter could not complete; check native login/model");
+                for (Object permission : (java.util.Collection<?>)agentField("getPermissions")) {
+                    String id = (String)permission.getClass().getMethod("getId").invoke(permission);
+                    if (answered.contains(id)) continue;
+                    var once = (java.util.Set<?>)permission.getClass().getMethod("getAllowOnce").invoke(permission);
+                    check(!once.isEmpty(), "Real adapter did not advertise a one-time approval");
+                    var option = components(panel).stream().filter(c -> c instanceof JButton b && b.isEnabled()
+                        && id.equals(b.getClientProperty("flow.permission.requestId"))
+                        && once.contains(b.getClientProperty("flow.permission.optionId"))).map(c -> (JButton)c).findFirst();
+                    if (option.isPresent()) { answered.add(id); option.get().doClick(0); }
+                }
+                String workspace = (String)agentField("getWorkspace");
+                if (workspace == null || !"ready".equals(status)) return false;
+                Path root = Path.of(workspace).toRealPath();
+                check(root.startsWith(Path.of(System.getProperty("flow.engine.dataRoot")).toRealPath()), "Real fixture workspace escaped owned storage");
+                Path file = root.resolve("flow-b29.txt");
+                return Files.isRegularFile(file) && expected.equals(Files.readString(file));
+            }), 180);
+            if (turn == 1) edt(() -> {
+                field("Task prompt").setText("Change flow-b29.txt to contain exactly \"version 2\" followed by a newline. Do not edit other files.");
+                click("Send follow-up");
+                return null;
+            });
+        }
+        String session = (String)edt(() -> agentField("getId"));
+        Path workspace = Path.of((String)edt(() -> agentField("getWorkspace"))).toRealPath();
+        edt(() -> { click("Close session"); return null; });
+        await(() -> edt(() -> "closed".equals(agentField("getStatus"))), 60);
+        result.addProperty("realWriterShutdownVerified", true);
+        result.addProperty("realSessionId", session);
+        result.addProperty("realCodexTwoEdits", true);
+        System.setProperty("flow.acceptance.sessionId", session);
+        System.setProperty("flow.acceptance.filename", "flow-b29.txt");
+        System.setProperty("flow.acceptance.version1", "version 1\n");
+        System.setProperty("flow.acceptance.version2", "version 2\n");
+        historicalDiffs();
+        Files.delete(workspace.resolve("flow-b29.txt"));
+        historicalDiffs();
+        result.addProperty("realHistoricalDiffsAfterLiveDeletion", true);
+    }
+    private void renderedMerges() throws Exception {
+        step = "rendered native merge Apply and Cancel";
+        for (boolean accept : List.of(false, true)) {
+            var outcome = new AtomicReference<MergeResult>();
+            var outputDocument = edt(() -> EditorFactory.getInstance().createDocument("setting=base\n"));
+            edt(() -> {
+                var request = DiffRequestFactory.getInstance().createMergeRequest(project, PlainTextFileType.INSTANCE,
+                    outputDocument, List.of("setting=developer\n", "setting=base\n", "setting=agent\n"),
+                    "Flow acceptance merge", List.of("Current project", "Session baseline", "Agent candidate"), outcome::set);
+                ApplicationManager.getApplication().invokeLater(() -> DiffManager.getInstance().showMerge(project, request), ModalityState.any());
+                return null;
+            });
+            await(() -> edt(() -> java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors())
+                .anyMatch(e -> e.getDocument() == outputDocument && !e.isViewer() && e.getComponent().isShowing())));
+            Window window = edt(() -> {
+                Editor editor = java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors())
+                    .filter(e -> e.getDocument() == outputDocument && e.getComponent().isShowing()).findFirst().orElseThrow();
+                var parent = javax.swing.SwingUtilities.getWindowAncestor(editor.getComponent());
+                check(parent != null && parent.isShowing(), "Native merge window is not visible");
+                for (String text : List.of("setting=developer\n", "setting=agent\n")) {
+                    check(java.util.Arrays.stream(EditorFactory.getInstance().getAllEditors()).anyMatch(e -> e.isViewer()
+                        && text.equals(e.getDocument().getText()) && e.getComponent().isShowing()
+                        && javax.swing.SwingUtilities.getWindowAncestor(e.getComponent()) == parent), "Native merge input was not rendered read-only");
+                }
+                WriteCommandAction.runWriteCommandAction(project, () -> outputDocument.setText("setting=resolved\n"));
+                var image = new BufferedImage(parent.getWidth(), parent.getHeight(), BufferedImage.TYPE_INT_RGB);
+                var graphics = image.createGraphics();
+                try { parent.paint(graphics); } finally { graphics.dispose(); }
+                ImageIO.write(image, "png", output.resolveSibling(System.getProperty("flow.acceptance.phase") + "-merge-" + (accept ? "apply" : "cancel") + ".png").toFile());
+                return parent;
+            });
+            edt(() -> {
+                var action = components(window).stream().filter(c -> c instanceof JButton b && b.isShowing()
+                    && (accept ? "Apply" : "Cancel").equals(b.getText())).map(c -> (JButton)c).findFirst().orElseThrow();
+                check(action.isEnabled(), "Native merge action is disabled");
+                ApplicationManager.getApplication().invokeLater(() ->
+                    check(action.getAccessibleContext().getAccessibleAction().doAccessibleAction(0), "Native merge accessible action failed"), ModalityState.any());
+                return null;
+            });
+            var confirmed = new java.util.concurrent.atomic.AtomicBoolean();
+            await(() -> edt(() -> {
+                for (Window dialog : window.getOwnedWindows()) if (dialog.isShowing()) {
+                    String label = accept ? "Apply Changes and Mark Resolved" : "Discard Changes and Cancel Merge";
+                    var confirmation = components(dialog).stream().filter(c -> c instanceof JButton b && b.isShowing()
+                        && label.equals(b.getText())).map(c -> (JButton)c).findFirst();
+                    if (confirmation.isPresent()) {
+                        check(confirmation.get().isEnabled(), "Native merge confirmation is disabled");
+                        confirmed.set(true);
+                        confirmation.get().doClick(0);
+                    }
+                }
+                return outcome.get() != null;
+            }));
+            check(confirmed.get(), "Edited native merge was not confirmed through its owned dialog");
+            check(outcome.get() == (accept ? MergeResult.RESOLVED : MergeResult.CANCEL), "Native merge returned " + outcome.get() + " for " + (accept ? "Apply" : "Cancel"));
+            check(edt(outputDocument::getText).equals(accept ? "setting=resolved\n" : "setting=base\n"), "Native merge returned unexpected output bytes");
+        }
+        result.addProperty("renderedMergeApplyAndCancel", true);
+    }
+    private void accessibleControls() throws Exception {
+        step = "accessible controls and keyboard bindings";
+        edt(() -> {
+            var tabs = components(panel).stream().filter(c -> c instanceof JTabbedPane).map(c -> (JTabbedPane)c)
+                .filter(t -> t.indexOfTab("Session") >= 0).findFirst().orElseThrow();
+            tabs.setSelectedIndex(0);
+            check(tabs.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).allKeys() != null, "Tabs have no keyboard bindings");
+            for (String name : List.of("ACP adapter executable", "Advanced adapter arguments", "Model override", "Task prompt")) {
+                var field = components(panel).stream().filter(c -> c instanceof JTextComponent && c.getAccessibleContext() != null
+                    && name.equals(c.getAccessibleContext().getAccessibleName())).findFirst().orElseThrow();
+                check(field.isFocusable(), "Input is not keyboard focusable: " + name);
+                check(field.getAccessibleContext().getAccessibleRole() != AccessibleRole.UNKNOWN, "Input has no accessible role");
+            }
+            for (var c : components(panel)) if (c instanceof JButton b && b.getText() != null && !b.getText().isBlank()) {
+                check(b.getAccessibleContext().getAccessibleName() != null && !b.getAccessibleContext().getAccessibleName().isBlank(), "Action has no accessible name");
+                check(b.getAccessibleContext().getAccessibleAction() != null, "Action is unavailable to assistive technology");
+            }
+            // Invoke the platform tab action through its keyboard binding.
+            var key = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_RIGHT, 0);
+            Object binding = tabs.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).get(key);
+            check(binding != null && tabs.getActionMap().get(binding) != null, "Right-arrow tab action is unavailable");
+            tabs.getActionMap().get(binding).actionPerformed(new java.awt.event.ActionEvent(tabs, 0, binding.toString()));
+            check(tabs.getSelectedIndex() == 1, "Right-arrow did not navigate to History");
+            return null;
+        });
+        result.addProperty("accessibleNamesRolesAndActions", true);
+        result.addProperty("keyboardTabNavigation", true);
+        // A native screen-reader observation remains a separate human check.
     }
     @Override public void main(List<String> args) {
         output = Path.of(System.getProperty("flow.acceptance.output"));
         result.addProperty("passed", false);
         result.addProperty("idePid", ProcessHandle.current().pid());
+        result.addProperty("phase", System.getProperty("flow.acceptance.phase"));
         try {
             check(System.getProperty("flow.engine.path") == null, "Desktop acceptance cannot use a development engine override");
             check(!ApplicationManager.getApplication().isUnitTestMode(), "A full production IDE process is required");
             mount();
-            historicalDiffs();
+            if ("real".equals(System.getProperty("flow.acceptance.phase"))) realCodex();
+            else historicalDiffs();
             compactControls();
+            renderedMerges();
+            accessibleControls();
             startFixture();
             var owned = edt(() -> engine());
             var processes = new ArrayList<ProcessHandle>();
@@ -247,12 +448,12 @@ public final class AcceptanceStarter implements ApplicationStarter {
             panel = null; // Do not retain a plugin UI/classloader across unload.
             if ("unload".equals(System.getProperty("flow.acceptance.phase"))) {
                 step = "dynamic plugin unload";
-                boolean unloaded = edt(() -> DynamicPlugins.INSTANCE.unloadPlugin((IdeaPluginDescriptorImpl)PluginManagerCore.getPlugin(PluginId.getId("dev.flow.workbench"))));
+                boolean unloaded = edt(() -> DynamicPlugins.INSTANCE.unloadPlugin((IdeaPluginDescriptorImpl)PluginManagerCore.getPlugin(PluginId.getId("dev.flow.workbench"))), ModalityState.nonModal());
                 check(unloaded, "Flow could not unload without restarting the IDE");
                 result.addProperty("pluginUnloaded", true);
             } else {
                 step = "project close";
-                check(edt(() -> ProjectUtil.closeAndDispose(project)), "Owned project did not close");
+                check(edt(() -> ProjectUtil.closeAndDispose(project), ModalityState.nonModal()), "Owned project did not close");
                 result.addProperty("projectDisposed", project.isDisposed());
             }
             await(() -> processes.stream().noneMatch(ProcessHandle::isAlive));

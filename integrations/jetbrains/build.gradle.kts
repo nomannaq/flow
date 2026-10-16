@@ -87,6 +87,7 @@ tasks.test {
     inputs.dir(layout.buildDirectory.dir("native-engine"))
     inputs.files(rootProject.file("../../tests/fixtures/engine/fake_engine.py"), rootProject.file("../../scripts/spikes/fixture_agent.py"))
     systemProperty("flow.test.nativePayload", layout.buildDirectory.dir("native-engine").get().asFile.absolutePath)
+    systemProperty("flow.test.pluginVersion", project.version.toString())
     systemProperty("flow.test.engine", (acceptanceEngine ?: rootProject.file("../../target/debug/$engineFileName")).absolutePath)
     if (acceptanceEngine != null) {
         require(acceptanceEngine.isFile && acceptanceEngine.name == engineFileName) { "Select an installed native release engine" }
