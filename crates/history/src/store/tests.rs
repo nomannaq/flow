@@ -556,7 +556,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(store);
     let path = dir.join("history.sqlite3");
     let old = Connection::open(&path).unwrap();
-    old.execute_batch("DROP TABLE candidate_checks; DROP TABLE candidates; DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
+    old.execute_batch("DROP TABLE apply_journals; DROP TABLE candidate_checks; DROP TABLE candidates; DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
         .unwrap();
     old.execute(
         "INSERT INTO workspaces VALUES('legacy','/legacy',?1)",
@@ -593,7 +593,26 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(backup);
     drop(old);
     drop(store);
+    // Upgrade the immediately preceding candidate schema without losing it.
     let conn = Connection::open(&path).unwrap();
+    conn.execute_batch("DROP TABLE apply_journals; PRAGMA user_version=4;")
+        .unwrap();
+    drop(conn);
+    let upgraded = f.open();
+    assert!(upgraded.storage_report().unwrap().writable);
+    drop(upgraded);
+    let conn = Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+            .unwrap(),
+        5
+    );
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM workspaces", [], |r| r
+            .get::<_, u32>(0))
+            .unwrap(),
+        1
+    );
     conn.pragma_update(None, "user_version", 999).unwrap();
     drop(conn);
     assert!(matches!(
@@ -1255,4 +1274,160 @@ fn retention_preserves_blobs_shared_by_another_workspace_and_rejects_id_reuse() 
         store.create_session(key("recreate"), original),
         Err(Error::Conflict)
     ));
+}
+
+// Fixed seeds and corpus are retained in-tree. Failures identify seed + step.
+#[test]
+fn b26_seeded_manifests_reconstruct_and_mutations_replay_exactly() {
+    let corpus: Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/adversarial/corpus.json"
+    ))
+    .unwrap();
+    for seed in corpus["seeds"].as_array().unwrap() {
+        let mut random = seed.as_u64().unwrap();
+        let f = Fixture::new();
+        let mut store = f.open();
+        f.register(&store);
+        let mut expected = BTreeMap::<String, FileInput>::new();
+        for step in 1..=12 {
+            random = random.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let name = format!("dir/file-{}.bin", random % 7);
+            if random % 4 == 0 {
+                expected.remove(&name);
+            } else {
+                expected.insert(
+                    name,
+                    FileInput {
+                        bytes: (0..(random as usize % 4096))
+                            .map(|i| (random.wrapping_add(i as u64) >> (i % 8)) as u8)
+                            .collect(),
+                        mode: if random & 1 == 0 { 0o644 } else { 0o755 },
+                        kind: FileKind::Regular,
+                    },
+                );
+            }
+            let mut input = capture(b"", step);
+            input.files = expected.clone();
+            let mutation = key(&format!("seed-{seed}-{step}"));
+            let first = store
+                .publish_snapshot(mutation.clone(), input.clone())
+                .unwrap();
+            let high_water = store.snapshot().unwrap().high_water;
+            assert_eq!(
+                serde_json::to_value(&first).unwrap(),
+                serde_json::to_value(
+                    store
+                        .publish_snapshot(mutation.clone(), input.clone())
+                        .unwrap()
+                )
+                .unwrap(),
+                "seed={seed} step={step}"
+            );
+            let id = snapshot_id(first);
+            let snapshot = store.get_snapshot(id.clone()).unwrap();
+            assert_eq!(
+                snapshot.manifest.files.len(),
+                expected.len(),
+                "seed={seed} step={step}"
+            );
+            for (path, file) in &expected {
+                let entry = &snapshot.manifest.files[path];
+                assert_eq!(entry.mode, file.mode);
+                assert_eq!(entry.kind, file.kind);
+                assert_eq!(
+                    store.content_bytes(entry.blob.clone()).unwrap(),
+                    file.bytes,
+                    "seed={seed} step={step} path={path}"
+                );
+            }
+            input.provenance.push_str(" changed identity");
+            assert!(matches!(
+                store.publish_snapshot(mutation, input),
+                Err(Error::Conflict)
+            ));
+            assert_eq!(store.snapshot().unwrap().high_water, high_water);
+            drop(store);
+            store = f.open();
+            assert_eq!(
+                store.get_snapshot(id).unwrap(),
+                snapshot,
+                "seed={seed} step={step}"
+            );
+        }
+    }
+}
+
+#[test]
+fn b26_sqlite_full_during_apply_keeps_last_durable_journal_and_checkpoint() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline.clone());
+    store
+        .agent_event(
+            sid(),
+            None,
+            "closed".into(),
+            "session.closed".into(),
+            value!({}),
+        )
+        .unwrap();
+    let candidate = store
+        .save_candidate(store.candidate_source(sid()).unwrap())
+        .unwrap();
+    let mut journal = ApplyJournal {
+        id: "full-apply".into(),
+        candidate_id: candidate.id,
+        current_id: baseline.clone(),
+        root: f.project.clone(),
+        head: "head".into(),
+        index_digest: ContentId::hash(b"index"),
+        rollback_fingerprint: None,
+        files: vec![],
+        status: "planned".into(),
+        owner: None,
+        document_stamps: BTreeMap::new(),
+        superseded_by: None,
+        resolution_digest: None,
+    };
+    store.save_apply_journal(journal.clone()).unwrap();
+    journal.status = "applying".into();
+    store.update_apply_journal(journal.clone()).unwrap();
+    let high_water = store.snapshot().unwrap().high_water;
+    store
+        .call(|db| {
+            let pages: i64 = db
+                .conn
+                .pragma_query_value(None, "page_count", |r| r.get(0))?;
+            db.conn.pragma_update(None, "max_page_count", pages)?;
+            Ok(())
+        })
+        .unwrap();
+    journal.document_stamps = (0..4000).map(|i| (format!("document-{i:08}"), i)).collect();
+    journal.status = "complete".into();
+    let failure = store.update_apply_journal(journal).unwrap_err();
+    assert!(
+        matches!(failure,Error::Sql(rusqlite::Error::SqliteFailure(ref code,_)) if code.code == rusqlite::ErrorCode::DiskFull),
+        "{failure}"
+    );
+    assert_eq!(
+        store.apply_journal("full-apply".into()).unwrap().status,
+        "applying"
+    );
+    assert_eq!(store.snapshot().unwrap().high_water, high_water);
+    assert_eq!(store.checkpoint(sid()).unwrap().id, baseline);
+    assert!(!store.storage_report().unwrap().writable);
+    drop(store);
+    let recovered = f.open();
+    assert_eq!(
+        recovered.apply_journal("full-apply".into()).unwrap().status,
+        "recoveryRequired"
+    );
+    assert_eq!(recovered.checkpoint(sid()).unwrap().id, baseline);
+    assert!(!recovered.storage_report().unwrap().writable);
 }

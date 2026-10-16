@@ -21,7 +21,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
+mod application;
 mod candidates;
 mod lifecycle;
 mod maintenance;
@@ -934,6 +935,9 @@ impl Database {
             if version < 4 {
                 tx.execute_batch(include_str!("schema-4.sql"))?;
             }
+            if version < 5 {
+                tx.execute_batch(include_str!("schema-5.sql"))?;
+            }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             tx.commit()?;
         }
@@ -942,6 +946,7 @@ impl Database {
         // outcome. The next explicit check needs a fresh intent ID.
         conn.execute("UPDATE candidate_checks SET record=json_set(record,'$.status','interrupted') WHERE json_extract(record,'$.status')='running'", [])?;
         conn.pragma_update(None, "synchronous", "FULL")?;
+        conn.execute("UPDATE apply_journals SET record=json_set(record,'$.status','recoveryRequired') WHERE json_extract(record,'$.status') IN ('applying','rollingBack')", [])?;
         // macOS requests F_FULLFSYNC through SQLite's VFS when available.
         conn.pragma_update(None, "fullfsync", "ON")?;
         #[cfg(unix)]
@@ -972,11 +977,13 @@ impl Database {
             db.conn.pragma_update(None, "query_only", true)?;
         }
         let report = db.storage_report()?;
-        db.pending_at_open = report.pending_mutations > 0 || report.holds > 0;
+        db.pending_at_open =
+            report.pending_mutations > 0 || report.holds > 0 || report.pending_applications > 0;
         Ok(db)
     }
     fn integrity(&self) -> Result<()> {
         candidates::integrity(&self.conn)?;
+        application::integrity(&self.conn)?;
         let check: String = self
             .conn
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))?;

@@ -3,14 +3,14 @@ use crate::test_repository::Repository;
 use history::{Attribution, Observation, OperationStatus, Recorder, Session, Turn};
 use protocol::SessionId;
 
-struct Fixture {
-    repo: Repository,
-    store: HistoryStore,
-    workspace: history::Workspace,
-    session: SessionId,
+pub(crate) struct Fixture {
+    pub(crate) repo: Repository,
+    pub(crate) store: HistoryStore,
+    pub(crate) workspace: history::Workspace,
+    pub(crate) session: SessionId,
 }
 impl Fixture {
-    fn new(changed: bool) -> Self {
+    pub(crate) fn new(changed: bool) -> Self {
         let repo = Repository::new();
         let store = HistoryStore::open(&repo.root, &repo.data).unwrap();
         let manager =
@@ -90,7 +90,7 @@ impl Fixture {
             session,
         }
     }
-    fn prepare(&self) -> CandidateReview {
+    pub(crate) fn prepare(&self) -> CandidateReview {
         prepare(
             self.store.clone(),
             CandidatePrepare {
@@ -100,7 +100,7 @@ impl Fixture {
         )
         .unwrap()
     }
-    fn decide(&self, id: &ContentId, accept: bool) -> Result<CandidateReview> {
+    pub(crate) fn decide(&self, id: &ContentId, accept: bool) -> Result<CandidateReview> {
         decide(
             self.store.clone(),
             CandidateDecision {
@@ -110,6 +110,7 @@ impl Fixture {
             },
         )
     }
+    #[cfg(unix)]
     fn check(&self, id: &ContentId, name: &str, script: &str) -> Value {
         check(
             self.store.clone(),
@@ -201,6 +202,7 @@ fn approval_rejects_unverified_writers_live_edits_and_new_turns() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn explicit_check_mutations_create_new_candidate_and_require_new_review() {
     let f = Fixture::new(true);
@@ -231,6 +233,7 @@ fn explicit_check_mutations_create_new_candidate_and_require_new_review() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn failed_and_interrupted_checks_block_acceptance_and_retries_do_not_execute_again() {
     let f = Fixture::new(true);
@@ -307,6 +310,7 @@ fn persisted_candidates_survive_restart_and_unfinished_checks_are_not_replayed()
     assert!(!store.candidate_changes(review.id).unwrap().is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 fn unsupported_results_and_unexpected_source_mutation_never_receive_approval() {
     let f = Fixture::new(true);
@@ -350,6 +354,7 @@ fn unsupported_results_and_unexpected_source_mutation_never_receive_approval() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn launch_failure_is_not_a_stale_writer_and_rejection_cannot_be_undone_by_a_check() {
     let f = Fixture::new(true);

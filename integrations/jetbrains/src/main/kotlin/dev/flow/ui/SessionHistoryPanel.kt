@@ -112,8 +112,9 @@ internal class SessionHistoryPanel(
     private var fileCursor: String? = null
     private var connected = false
     private var rendering = false
-    private var task: Job? = null
-    private var fileAction = false
+
+    // A descendant selection must not cancel its still-loading ancestor page.
+    private val tasks = arrayOfNulls<Job>(5)
     private var selectedSessionId: String? = null
     private var selectedTurnId: String? = null
     private var selectedOperationId: String? = null
@@ -180,13 +181,13 @@ internal class SessionHistoryPanel(
             if (!rendering) {
                 // Model replacement can deliver selection clearing after the
                 // rendering guard ends. It must not cancel a pending page load.
-                if (fileAction) task?.cancel()
+                cancelFrom(4)
                 buttons()
             }
         }
         archive.addActionListener {
             val selected = sessions.selectedValue ?: return@addActionListener
-            runRequest {
+            runRequest(0) {
                 historyRequest("sessions.archive", AgentProtocol.command(selected.value["id"].asString))
                 loadSessions(null)
             }
@@ -213,21 +214,26 @@ internal class SessionHistoryPanel(
         coverage.accessibleContext.accessibleName = "Capture coverage warnings"
         buttons()
     }
-    private fun runRequest(fileAction: Boolean = false, block: suspend () -> Unit) {
-        task?.cancel()
-        this.fileAction = fileAction
-        task = scope.launch(start = CoroutineStart.LAZY) {
+    private fun cancelFrom(level: Int) {
+        for (index in level..4) {
+            tasks[index]?.cancel()
+            tasks[index] = null
+        }
+    }
+    private fun runRequest(level: Int, block: suspend () -> Unit) {
+        cancelFrom(level)
+        tasks[level] = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 message.text = "Loading…"
                 block()
             } catch (cancelled: CancellationException) {
-                if (task == coroutineContext[Job]) message.text = "Selection changed. Choose a recorded item to continue."
+                if (tasks[level] == coroutineContext[Job]) message.text = "Selection changed. Choose a recorded item to continue."
                 throw cancelled
             } catch (_: Exception) {
-                message.text = "History unavailable, content missing/corrupt, or selection changed. No live content was substituted. Refresh and retry; close/recover sessions before archiving."
+                if (tasks[level] == coroutineContext[Job]) message.text = "History unavailable, content missing/corrupt, or selection changed. No live content was substituted. Refresh and retry; close/recover sessions before archiving."
             }
         }
-        task!!.start() // Publish ownership before callbacks can start nested requests.
+        tasks[level]!!.start()
     }
     private fun params(after: String? = null) = JsonObject().apply {
         sessions.selectedValue?.let { addProperty("sessionId", it.value["id"].asString) }
@@ -286,6 +292,7 @@ internal class SessionHistoryPanel(
     private fun time(row: JsonObject, field: String) = runCatching { Instant.ofEpochMilli(row[field].asString.toLong()).toString() }.getOrDefault("Unknown time")
     private fun loadSessions(after: String?) {
         if (!connected) return
+        cancelFrom(0)
         replaceRows(sessions, emptyArray())
         replaceRows(turns, emptyArray())
         clearOperations()
@@ -293,7 +300,7 @@ internal class SessionHistoryPanel(
         turnCursor = null
         coverage.text = ""
         buttons()
-        runRequest {
+        runRequest(0) {
             val page = historyRequest("sessions.list", JsonObject().apply { after?.let { addProperty("after", it) } }).asJsonObject
             sessionCursor = page.optionalText("next")
             replaceRows(sessions, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString}" })
@@ -302,7 +309,7 @@ internal class SessionHistoryPanel(
         }
     }
     private fun loadTurns(after: String?) {
-        task?.cancel()
+        cancelFrom(1)
         replaceRows(turns, emptyArray())
         clearOperations()
         turnCursor = null
@@ -310,7 +317,7 @@ internal class SessionHistoryPanel(
         buttons()
         if (!connected || sessions.selectedValue == null) return
         val query = params(after)
-        runRequest {
+        runRequest(1) {
             val page = historyRequest("history.turns", query).asJsonObject
             turnCursor = page.optionalText("next")
             gap(page)
@@ -320,12 +327,12 @@ internal class SessionHistoryPanel(
         }
     }
     private fun loadOperations(after: String?) {
-        task?.cancel()
+        cancelFrom(2)
         clearOperations()
         buttons()
         if (!connected || sessions.selectedValue == null) return
         val query = params(after)
-        runRequest {
+        runRequest(2) {
             val page = historyRequest("history.operations", query).asJsonObject
             operationCursor = page.optionalText("next")
             gap(page)
@@ -340,14 +347,14 @@ internal class SessionHistoryPanel(
         }
     }
     private fun loadFiles(after: String?) {
-        task?.cancel()
+        cancelFrom(3)
         replaceFiles(emptyArray())
         fileCursor = null
         buttons()
         val operation = operations.selectedValue ?: return
         if (!connected) return
         val query = params(after)
-        runRequest {
+        runRequest(3) {
             val page = historyRequest("history.files", query).asJsonObject
             fileCursor = page.optionalText("next")
             replaceFiles(
@@ -372,7 +379,7 @@ internal class SessionHistoryPanel(
     private fun openDiff() {
         if (!connected) return
         val selected = selection() ?: return
-        runRequest(fileAction = true) {
+        runRequest(4) {
             val result = historyRequest("history.diff", selected.query()).asJsonObject
             if (selection() != selected) return@runRequest
             val spec = selected.diff(result)
@@ -391,7 +398,7 @@ internal class SessionHistoryPanel(
     private fun openCurrentFile() {
         if (!connected) return
         val selected = selection() ?: return
-        runRequest(fileAction = true) {
+        runRequest(4) {
             val result = historyRequest("history.location", selected.query()).asJsonObject
             if (selection() != selected) return@runRequest
             message.text = result["note"].asString
@@ -433,7 +440,7 @@ internal class SessionHistoryPanel(
         val wasConnected = connected
         connected = view.connected
         if (!connected && wasConnected) {
-            task?.cancel()
+            cancelFrom(0)
             replaceRows(sessions, emptyArray())
             replaceRows(turns, emptyArray())
             clearOperations()

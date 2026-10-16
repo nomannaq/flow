@@ -217,3 +217,33 @@ fn binary_ignored_files_rename_mode_delete_and_capture_overflow() {
             .contains("\"priorCaptureGap\":true")
     );
 }
+
+#[test]
+fn b26_duplicate_tool_events_and_idle_polls_do_not_invent_operations() {
+    let mut f = Fixture::new();
+    f.turn();
+    for sequence in 0..8 {
+        let tool = format!("duplicate-{sequence}");
+        assert!(f.tool(&tool, false, false).is_none());
+        assert!(f.tool(&tool, false, false).is_none());
+        let bytes = format!("observed effect {sequence}\n");
+        fs::write(f.path("tracked.txt"), &bytes).unwrap();
+        let id = f.tool(&tool, true, false).unwrap();
+        assert!(f.tool(&tool, true, false).is_none());
+        assert!(f.recorder.reconcile(Boundary::Idle).unwrap().is_none());
+        let operations = f.store.operations(f.session.clone(), 0, 100).unwrap().items;
+        assert_eq!(operations.len(), sequence + 1);
+        let operation = f.store.get_operation(id).unwrap();
+        let snapshot = f.store.get_snapshot(operation.input.after).unwrap();
+        assert_eq!(
+            f.store
+                .content_bytes(snapshot.manifest.files["tracked.txt"].blob.clone())
+                .unwrap(),
+            bytes.as_bytes()
+        );
+    }
+    assert_eq!(
+        fs::read(f.repo.root.join("tracked.txt")).unwrap(),
+        b"base\n"
+    );
+}
