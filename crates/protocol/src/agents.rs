@@ -6,6 +6,17 @@ use serde_json::Value;
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentStart {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_context: Option<bool>,
+    /// Connect and discover configuration without making an inference request.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub connect_only: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prompt_provenance: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlay: Option<crate::OverlaySelection>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub adapter_profile: String,
     /// Host-selected absolute executable; never read from repository config.
     pub executable: String,
     #[serde(default)]
@@ -24,6 +35,10 @@ pub struct AgentStart {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCommand {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_context: Option<bool>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prompt_provenance: String,
     pub session_id: SessionId,
     #[serde(default)]
     pub prompt: String,
@@ -33,6 +48,32 @@ pub struct AgentCommand {
 pub struct AgentAuthenticate {
     pub session_id: SessionId,
     pub method_id: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentConfigure {
+    pub session_id: SessionId,
+    pub config_id: String,
+    pub value: Value,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConfigChoice {
+    pub value: String,
+    pub name: String,
+    pub description: String,
+    pub group: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConfigOption {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub kind: String,
+    pub current_value: Value,
+    pub options: Vec<AgentConfigChoice>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +108,10 @@ pub struct AgentActivity {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentView {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub configuration_error: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config_options: Vec<AgentConfigOption>,
     pub session_id: Option<SessionId>,
     pub workspace: Option<String>,
     pub status: String,

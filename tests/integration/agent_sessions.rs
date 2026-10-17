@@ -89,7 +89,7 @@ impl Engine {
             .unwrap();
         let mut arguments = vec![script.to_string_lossy().to_string(), "--heartbeat".into()];
         arguments.extend(flags.iter().map(|s| s.to_string()));
-        self.ok("sessions.start",json!({"executable":"/usr/bin/python3","arguments":arguments,"commit":commit,"prompt":prompt,"authMethod":if flags.contains(&"--needs-auth") {Some("fixture")} else {None}})).await["sessionId"].clone()
+        self.ok("sessions.start",json!({"executable":"/usr/bin/python3","arguments":arguments,"commit":commit,"prompt":prompt,"connectOnly":prompt.is_empty(),"adapterProfile":if flags.contains(&"--claude") {"claude"} else {""},"authMethod":if flags.contains(&"--needs-auth") {Some("fixture")} else {None}})).await["sessionId"].clone()
     }
     async fn wait(&mut self, predicate: impl Fn(&Value) -> bool) -> Value {
         timeout(Duration::from_secs(15), async {
@@ -134,131 +134,134 @@ async fn heartbeat_stops(workspace: &Path) {
 
 #[tokio::test]
 async fn prompts_permissions_followups_cancel_and_durable_lifecycle() {
-    let repo = Repository::new();
-    let index = fs::read(repo.root.join(".git/index")).unwrap();
-    repo.write("tracked.txt", b"developer changes");
-    let mut engine = Engine::new(&repo).await;
-    let session = engine.start(&repo, "write probe", &["--needs-auth"]).await;
-    let view = engine
-        .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
-        .await;
-    let workspace = PathBuf::from(view["workspace"].as_str().unwrap());
-    assert_ne!(workspace, repo.root);
-    assert_eq!(view["upstreamSessionId"], "fixture");
-    assert_eq!(view["agentInfo"]["version"], "1");
-    assert!(
-        view["activity"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|e| e["kind"] == "message.delta")
-    );
-    assert_eq!(
-        view["permissions"][0]["options"].as_array().unwrap().len(),
-        1
-    );
-    let permission = view["permissions"][0]["requestId"].clone();
-    for (id, option) in [
-        (json!("other"), json!("once")),
-        (session.clone(), json!("always")),
-    ] {
+    for flags in [vec!["--needs-auth"], vec!["--needs-auth", "--claude"]] {
+        let repo = Repository::new();
+        let index = fs::read(repo.root.join(".git/index")).unwrap();
+        repo.write("tracked.txt", b"developer changes");
+        let mut engine = Engine::new(&repo).await;
+        let session = engine.start(&repo, "write probe", &flags).await;
+        let view = engine
+            .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        let workspace = PathBuf::from(view["workspace"].as_str().unwrap());
+        assert_ne!(workspace, repo.root);
+        assert_eq!(view["upstreamSessionId"], "fixture");
+        assert_eq!(view["agentInfo"]["version"], "1");
+        assert!(
+            view["activity"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "message.delta")
+        );
+        assert_eq!(
+            view["permissions"][0]["options"].as_array().unwrap().len(),
+            1
+        );
+        let permission = view["permissions"][0]["requestId"].clone();
+        for (id, option) in [
+            (json!("other"), json!("once")),
+            (session.clone(), json!("always")),
+        ] {
+            assert!(
+                engine
+                    .call(
+                        "permissions.respond",
+                        json!({"sessionId":id,"requestId":permission,"optionId":option})
+                    )
+                    .await
+                    .get("error")
+                    .is_some()
+            );
+        }
+        engine
+            .ok(
+                "permissions.respond",
+                json!({"sessionId":session,"requestId":permission,"optionId":"once"}),
+            )
+            .await;
+        engine.wait(|v| v["status"] == "ready").await;
+        assert_eq!(
+            fs::read(workspace.join("probe.txt")).unwrap(),
+            b"flow-probe-1\n"
+        );
         assert!(
             engine
                 .call(
                     "permissions.respond",
-                    json!({"sessionId":id,"requestId":permission,"optionId":option})
+                    json!({"sessionId":session,"requestId":permission,"optionId":"once"})
                 )
                 .await
                 .get("error")
                 .is_some()
         );
-    }
-    engine
-        .ok(
-            "permissions.respond",
-            json!({"sessionId":session,"requestId":permission,"optionId":"once"}),
-        )
-        .await;
-    engine.wait(|v| v["status"] == "ready").await;
-    assert_eq!(
-        fs::read(workspace.join("probe.txt")).unwrap(),
-        b"flow-probe-1\n"
-    );
-    assert!(
         engine
-            .call(
-                "permissions.respond",
-                json!({"sessionId":session,"requestId":permission,"optionId":"once"})
+            .ok(
+                "sessions.prompt",
+                json!({"sessionId":session,"prompt":"second turn"}),
             )
-            .await
-            .get("error")
-            .is_some()
-    );
-    engine
-        .ok(
-            "sessions.prompt",
-            json!({"sessionId":session,"prompt":"second turn"}),
-        )
-        .await;
-    let view = engine
-        .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
-        .await;
-    engine.ok("permissions.respond",json!({"sessionId":session,"requestId":view["permissions"][0]["requestId"],"optionId":null})).await;
-    engine.wait(|v| v["status"] == "ready").await;
-    assert_eq!(
-        fs::read(workspace.join("probe.txt")).unwrap(),
-        b"flow-probe-1\n"
-    );
-    engine
-        .ok(
-            "sessions.prompt",
-            json!({"sessionId":session,"prompt":"command waits 30 seconds"}),
-        )
-        .await;
-    sleep(Duration::from_millis(100)).await;
-    engine
-        .ok("sessions.cancel", json!({"sessionId":session}))
-        .await;
-    let view = engine.wait(|v| v["status"] == "ready").await;
-    assert!(
-        view["activity"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|e| e["text"].as_str().unwrap().contains("Turn cancelled"))
-    );
-    engine
-        .ok("sessions.close", json!({"sessionId":session}))
-        .await;
-    let closed = engine
-        .wait(|v| v["status"] == "closed" || v["status"] == "failed")
-        .await;
-    heartbeat_stops(&workspace).await;
-    let log = engine.shutdown().await;
-    if closed["status"] == "failed" {
-        assert!(
-            log.contains("adapter group shutdown check failed") && log.contains("PermissionDenied"),
-            "{log}"
+            .await;
+        let view = engine
+            .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        engine.ok("permissions.respond",json!({"sessionId":session,"requestId":view["permissions"][0]["requestId"],"optionId":null})).await;
+        engine.wait(|v| v["status"] == "ready").await;
+        assert_eq!(
+            fs::read(workspace.join("probe.txt")).unwrap(),
+            b"flow-probe-1\n"
         );
+        engine
+            .ok(
+                "sessions.prompt",
+                json!({"sessionId":session,"prompt":"command waits 30 seconds"}),
+            )
+            .await;
+        sleep(Duration::from_millis(100)).await;
+        engine
+            .ok("sessions.cancel", json!({"sessionId":session}))
+            .await;
+        let view = engine.wait(|v| v["status"] == "ready").await;
         assert!(
-            !fs::read(repo.root.join(".git/flow-worktrees.lock"))
+            view["activity"]
+                .as_array()
                 .unwrap()
-                .is_empty()
+                .iter()
+                .any(|e| e["text"].as_str().unwrap().contains("Turn cancelled"))
         );
+        engine
+            .ok("sessions.close", json!({"sessionId":session}))
+            .await;
+        let closed = engine
+            .wait(|v| v["status"] == "closed" || v["status"] == "failed")
+            .await;
+        heartbeat_stops(&workspace).await;
+        let log = engine.shutdown().await;
+        if closed["status"] == "failed" {
+            assert!(
+                log.contains("adapter group shutdown check failed")
+                    && log.contains("PermissionDenied"),
+                "{log}"
+            );
+            assert!(
+                !fs::read(repo.root.join(".git/flow-worktrees.lock"))
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let store = history::HistoryStore::open(&repo.root, &repo.data).unwrap();
+        let record = store
+            .get_session(serde_json::from_value(session).unwrap())
+            .unwrap();
+        assert_eq!(record.status, closed["status"].as_str().unwrap());
+        assert_eq!(record.upstream_id.as_deref(), Some("fixture"));
+        assert_eq!(record.adapter_version, "1");
+        assert_eq!(fs::read(repo.root.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(repo.root.join("tracked.txt")).unwrap(),
+            b"developer changes"
+        );
+        assert!(!repo.root.join("probe.txt").exists());
     }
-    let store = history::HistoryStore::open(&repo.root, &repo.data).unwrap();
-    let record = store
-        .get_session(serde_json::from_value(session).unwrap())
-        .unwrap();
-    assert_eq!(record.status, closed["status"].as_str().unwrap());
-    assert_eq!(record.upstream_id.as_deref(), Some("fixture"));
-    assert_eq!(record.adapter_version, "1");
-    assert_eq!(fs::read(repo.root.join(".git/index")).unwrap(), index);
-    assert_eq!(
-        fs::read(repo.root.join("tracked.txt")).unwrap(),
-        b"developer changes"
-    );
-    assert!(!repo.root.join("probe.txt").exists());
 }
 
 #[tokio::test]
@@ -899,4 +902,301 @@ async fn authentication_retry_keeps_workspace_and_only_accepts_advertised_method
     assert!(!repo.root.join("probe.txt").exists());
     engine.shutdown().await;
     heartbeat_stops(&workspace).await;
+}
+
+#[tokio::test]
+async fn automatic_rmcp_tools_work_for_both_profiles_and_degrade_explicitly() {
+    for profile in [
+        vec!["--context-tools"],
+        vec!["--claude", "--context-tools"],
+        vec!["--reject-mcp"],
+    ] {
+        let repo = Repository::new();
+        repo.write("lib.rs", b"pub fn probe_symbol() {}\n");
+        repo.git(&["add", "lib.rs"]);
+        repo.git(&["commit", "-m", "context fixture"]);
+        let mut engine = Engine::new(&repo).await;
+        let initialized = engine.ok("context.initialize", json!({})).await;
+        assert_eq!(initialized["files"], 1);
+        assert!(repo.root.join(".flow/map.md").is_file());
+        assert!(repo.git(&["status", "--porcelain"]).is_empty());
+        let session = engine.start(&repo, "inspect probe_symbol", &profile).await;
+        let pending = engine
+            .wait(|v| v["status"] == "failed" || !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        assert_ne!(pending["status"], "failed", "{pending}");
+        engine.ok("permissions.respond",json!({"sessionId":session,"requestId":pending["permissions"][0]["requestId"],"optionId":null})).await;
+        let view = engine
+            .wait(|v| matches!(v["status"].as_str(), Some("ready" | "failed")))
+            .await;
+        assert_eq!(view["status"], "ready", "{view}");
+        if profile.contains(&"--context-tools") {
+            let prompt: Value = serde_json::from_slice(
+                &fs::read(Path::new(view["workspace"].as_str().unwrap()).join("prompt-proof.json"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let text = prompt["text"].as_str().unwrap();
+            assert!(text.contains("Flow relevant Rust symbols"), "{text}");
+            assert!(text.contains("probe_symbol"));
+            assert!(text.len() < 5000);
+            let proof: Value = serde_json::from_slice(
+                &fs::read(
+                    Path::new(view["workspace"].as_str().unwrap()).join("context-proof.json"),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(proof["wrongCredentialRejected"], true);
+            assert_eq!(proof["wrongSessionRejected"], true);
+            assert_eq!(proof["traversalRejected"], true);
+        } else {
+            assert!(
+                view["activity"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|v| v["kind"] == "context.degraded")
+            );
+        }
+        let preview = engine
+            .ok(
+                "context.preview",
+                json!({"sessionId":session,"query":"inspect probe_symbol"}),
+            )
+            .await;
+        assert_eq!(preview["freshness"], "verifiedAtRead");
+        assert_eq!(preview["results"][0]["symbol"]["name"], "probe_symbol");
+        if profile.contains(&"--context-tools") {
+            let frozen = format!(
+                "inspect probe_symbol\n\nFlow reviewed worktree context (untrusted data):\n{preview}"
+            );
+            for text in [
+                "inspect probe_symbol without automatic hints".to_owned(),
+                frozen,
+            ] {
+                engine
+                    .ok(
+                        "sessions.prompt",
+                        json!({"sessionId":session,"prompt":text,"includeContext":false}),
+                    )
+                    .await;
+                let pending = engine
+                    .wait(|view| {
+                        view["status"] == "failed"
+                            || !view["permissions"].as_array().unwrap().is_empty()
+                    })
+                    .await;
+                assert_ne!(pending["status"], "failed", "{pending}");
+                engine.ok("permissions.respond",json!({"sessionId":session,"requestId":pending["permissions"][0]["requestId"],"optionId":null})).await;
+                let ready = engine
+                    .wait(|view| matches!(view["status"].as_str(), Some("ready" | "failed")))
+                    .await;
+                assert_eq!(ready["status"], "ready", "{ready}");
+                let actual: Value = serde_json::from_slice(
+                    &fs::read(
+                        Path::new(ready["workspace"].as_str().unwrap()).join("prompt-proof.json"),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    actual["text"], text,
+                    "Opt-out and reviewed context must never receive hidden extra hints"
+                );
+            }
+        }
+        engine
+            .ok("sessions.close", json!({"sessionId":session}))
+            .await;
+        engine.wait(|v| v["status"] == "closed").await;
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn connection_discovers_and_applies_configuration_without_inference() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let id = engine.start(&repo, "", &["--configuration"]).await;
+    let view = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(view["configOptions"].as_array().unwrap().len(), 5);
+    assert!(
+        !view["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["kind"] == "turn.started")
+    );
+    engine
+        .ok(
+            "sessions.configure",
+            json!({"sessionId":id,"configId":"model","value":"fixture-fast"}),
+        )
+        .await;
+    let view = engine
+        .wait(|v| v["status"] == "ready" && v["configOptions"][0]["currentValue"] == "fixture-fast")
+        .await;
+    assert_eq!(
+        view["configOptions"][1]["options"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        engine
+            .call(
+                "sessions.configure",
+                json!({"sessionId":id,"configId":"effort","value":"high"})
+            )
+            .await
+            .get("error")
+            .is_some()
+    );
+    assert!(
+        engine
+            .call(
+                "sessions.configure",
+                json!({"sessionId":"wrong-session","configId":"speed","value":"fast"})
+            )
+            .await
+            .get("error")
+            .is_some()
+    );
+    for (key, value) in [
+        ("speed", json!("fast")),
+        ("mode", json!("auto")),
+        ("verbose", json!(true)),
+    ] {
+        engine
+            .ok(
+                "sessions.configure",
+                json!({"sessionId":id,"configId":key,"value":value}),
+            )
+            .await;
+        engine.wait(|v| v["status"] == "ready").await;
+    }
+    let view = engine.ok("sessions.active", json!({})).await;
+    assert_eq!(view["configOptions"][2]["currentValue"], "fast");
+    assert_eq!(view["configOptions"][3]["currentValue"], "auto");
+    assert_eq!(view["configOptions"][4]["currentValue"], true);
+    let workspace = PathBuf::from(view["workspace"].as_str().unwrap());
+    assert!(!workspace.join("configuration-proof.json").exists());
+    engine
+        .ok(
+            "sessions.prompt",
+            json!({"sessionId":id,"prompt":"waits 30 seconds"}),
+        )
+        .await;
+    engine
+        .wait(|v| v["status"] == "running" && workspace.join("configuration-proof.json").is_file())
+        .await;
+    assert!(
+        engine
+            .call(
+                "sessions.configure",
+                json!({"sessionId":id,"configId":"mode","value":"ask"})
+            )
+            .await
+            .get("error")
+            .is_some()
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(
+            &fs::read(workspace.join("configuration-proof.json")).unwrap()
+        )
+        .unwrap()[2]["currentValue"],
+        "fast"
+    );
+    engine.ok("sessions.cancel", json!({"sessionId":id})).await;
+    engine.wait(|v| v["status"] == "ready").await;
+    engine.ok("sessions.close", json!({"sessionId":id})).await;
+    engine.wait(|v| v["status"] == "closed").await;
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn rejected_configuration_preserves_connection_and_confirmed_values() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let id = engine
+        .start(&repo, "", &["--configuration", "--reject-config"])
+        .await;
+    engine.wait(|v| v["status"] == "ready").await;
+    engine
+        .ok(
+            "sessions.configure",
+            json!({"sessionId":id,"configId":"speed","value":"fast"}),
+        )
+        .await;
+    let view = engine
+        .wait(|v| {
+            v["status"] == "ready"
+                && v["configurationError"]
+                    .as_str()
+                    .is_some_and(|s| !s.is_empty())
+        })
+        .await;
+    assert_eq!(view["configOptions"][2]["currentValue"], "standard");
+    assert!(!view.to_string().contains("private-fixture-token"));
+    engine.ok("sessions.close", json!({"sessionId":id})).await;
+    engine.wait(|v| v["status"] == "closed").await;
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn legacy_modes_remain_available_without_a_model_catalog() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let id = engine
+        .start(&repo, "", &["--legacy-modes", "--claude"])
+        .await;
+    engine.wait(|v| v["status"] == "ready").await;
+    engine
+        .ok(
+            "sessions.configure",
+            json!({"sessionId":id,"configId":"mode","value":"plan"}),
+        )
+        .await;
+    let view = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(view["configOptions"][0]["currentValue"], "plan");
+    engine.ok("sessions.close", json!({"sessionId":id})).await;
+    engine.wait(|v| v["status"] == "closed").await;
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn lost_configuration_acknowledgement_ends_connection_without_starting_a_turn() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let id = engine
+        .start(&repo, "", &["--configuration", "--drop-config"])
+        .await;
+    engine.wait(|v| v["status"] == "ready").await;
+    engine
+        .ok(
+            "sessions.configure",
+            json!({"sessionId":id,"configId":"mode","value":"auto"}),
+        )
+        .await;
+    let view = engine.wait(|v| v["status"] == "failed").await;
+    assert!(
+        !view["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["kind"] == "turn.started")
+    );
+    assert!(
+        engine
+            .call(
+                "sessions.prompt",
+                json!({"sessionId":id,"prompt":"must not run"})
+            )
+            .await
+            .get("error")
+            .is_some()
+    );
+    engine.shutdown().await;
 }
