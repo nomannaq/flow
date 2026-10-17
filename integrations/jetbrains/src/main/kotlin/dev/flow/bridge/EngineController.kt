@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ internal data class EngineView(
     val epoch: String? = null,
     val pid: Long? = null,
     val health: String = "",
+    val contextStatus: String = "Project context not initialized",
     val historyStatus: String = "",
     val sessions: Long = 0,
     val operations: Long = 0,
@@ -38,7 +40,7 @@ internal data class EngineView(
 
 /** UI projection only. Durable history/cursors are authoritative in Rust. */
 internal class EngineController(
-    private val scope: CoroutineScope,
+    val scope: CoroutineScope,
     private val projectId: ProjectId,
     private val launchProcess: () -> Process,
     private val pollMs: Long = 1000,
@@ -90,11 +92,22 @@ internal class EngineController(
                                         val loadingBaseline = command.method == "sessions.baseline"
                                         mutableView.update { it.copy(actionError = "", baselineLoading = loadingBaseline) }
                                         try {
-                                            val result = connection.request(command.method, command.params, timeoutMs = 30000)
+                                            if (command.reply?.isCancelled == true) continue
+                                            val result = coroutineScope {
+                                                val work = async { connection.request(command.method, command.params, timeoutMs = 30000) }
+                                                val cancellation = command.reply?.invokeOnCompletion { if (command.reply.isCancelled) work.cancel() }
+                                                try {
+                                                    work.await()
+                                                } finally {
+                                                    cancellation?.dispose()
+                                                }
+                                            }
                                             command.reply?.complete(result)
                                             if (loadingBaseline) {
                                                 mutableView.update { it.copy(baseline = result.asJsonObject["commit"].asString, baselineRevision = it.baselineRevision + 1) }
                                             }
+                                        } catch (cancelled: CancellationException) {
+                                            if (command.reply?.isCancelled != true) throw cancelled
                                         } catch (error: EngineRpcException) {
                                             command.reply?.completeExceptionally(error)
                                             showActionError(
@@ -197,8 +210,26 @@ internal class EngineController(
         return reply.await()
     }
 
+    suspend fun productivityRequest(method: String, params: JsonObject = JsonObject()): JsonObject {
+        require(method in setOf("context.initialize", "context.preview", "context.overview", "context.search", "context.symbol", "context.freshness", "overlay.preview", "commit.selection", "utilities.prepare", "utilities.generate"))
+        val reply = CompletableDeferred<JsonElement>()
+        check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
+        try {
+            val value = reply.await().asJsonObject
+            check(!value.has("error")) { value["error"]?.asString ?: "Request failed" }
+            return value
+        } catch (cancelled: CancellationException) {
+            reply.cancel()
+            throw cancelled
+        }
+    }
+
     fun showActionError(message: String) {
         mutableView.update { it.copy(actionError = message) }
+    }
+
+    fun showContextStatus(message: String) {
+        mutableView.update { it.copy(contextStatus = message) }
     }
 
     private suspend fun snapshot(connection: EngineConnection): Pair<EventCursor, EngineView> {

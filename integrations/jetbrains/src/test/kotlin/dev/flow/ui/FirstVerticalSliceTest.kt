@@ -145,7 +145,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                     } else {
                         "Write second version"
                     }
-                    click(taskPanel, if (first) "Start Codex session" else "Send follow-up")
+                    click(taskPanel, if (first) "Start session" else "Send")
                 }
                 if (real) {
                     val answered = mutableSetOf<String>()
@@ -181,7 +181,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                     controller.view.value.agent.workspace?.let { Files.exists(Path.of(it).resolve("probe.txt")) } == true
                 }
                 cancellationStarted = System.nanoTime()
-                withContext(Dispatchers.EDT) { click(taskPanel, "Cancel turn") }
+                withContext(Dispatchers.EDT) { click(taskPanel, "Stop") }
             }
             await("first turn ready") { controller.view.value.agent.status == "ready" }
             cancellationStarted?.let { cancellationMs = (System.nanoTime() - it) / 1_000_000.0 }
@@ -307,8 +307,8 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             components(panel).filterIsInstance<JCheckBox>().single().doClick(0)
         }
         try {
-            await("candidate preparation enabled") { button(panel, "Prepare complete result").isEnabled }
-            withContext(Dispatchers.EDT) { click(panel, "Prepare complete result") }
+            await("candidate preparation enabled") { button(panel, "Prepare result").isEnabled }
+            withContext(Dispatchers.EDT) { click(panel, "Prepare result") }
             // Full-result review includes the fixture's process diagnostic file;
             // historical probe-only review above deliberately selects one file.
             await("complete candidate", { "files=${list(panel, "Complete-result files").model.size}; ${field(panel, "Candidate review status").text}" }) { list(panel, "Complete-result files").model.size == 2 && field(panel, "Candidate review status").text.contains("Decision: pending") }
@@ -316,7 +316,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                 val resultFiles = list(panel, "Complete-result files")
                 resultFiles.selectedIndex = (0 until resultFiles.model.size).single { resultFiles.model.getElementAt(it).toString().startsWith("probe.txt —") }
                 requests.clear()
-                click(panel, "Open complete-result diff")
+                click(panel, "Open result diff")
             }
             await("complete-result native diff") { requests.size == 1 }
             withContext(Dispatchers.EDT) {
@@ -327,9 +327,9 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                 assertTrue(diff.contentTitles.first()!!.contains("absent"))
                 assertTrue(diff.contentTitles.last()!!.contains("mode 644"))
             }
-            await("candidate acceptance enabled") { button(panel, "Accept complete result").isEnabled }
-            withContext(Dispatchers.EDT) { click(panel, "Accept complete result") }
-            await("hash-bound acceptance") { field(panel, "Candidate review status").text.contains("Decision: accepted") && button(panel, "Run explicit check (15s)").isEnabled }
+            await("candidate acceptance enabled") { button(panel, "Accept result").isEnabled }
+            withContext(Dispatchers.EDT) { click(panel, "Accept result") }
+            await("hash-bound acceptance") { field(panel, "Candidate review status").text.contains("Decision: accepted") && button(panel, "Run check (15s)").isEnabled }
             val originalId = withContext(Dispatchers.EDT) { Regex("[a-f0-9]{64}").find(field(panel, "Candidate review status").text)!!.value }
             withContext(Dispatchers.EDT) {
                 field(panel, "Explicit candidate check command").text = JsonArray().apply {
@@ -337,24 +337,24 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                     add("-c")
                     add("from pathlib import Path; Path('probe.txt').write_text('checked candidate\\n')")
                 }.toString()
-                click(panel, "Run explicit check (15s)")
+                click(panel, "Run check (15s)")
             }
             await("new unchecked candidate version") {
                 val text = field(panel, "Candidate review status").text
-                text.contains("Decision: pending") && text.contains("passed") && Regex("[a-f0-9]{64}").find(text)?.value != originalId && button(panel, "Accept complete result").isEnabled
+                text.contains("Decision: pending") && text.contains("passed") && Regex("[a-f0-9]{64}").find(text)?.value != originalId && button(panel, "Accept result").isEnabled
             }
             withContext(Dispatchers.EDT) {
                 val resultFiles = list(panel, "Complete-result files")
                 resultFiles.selectedIndex = (0 until resultFiles.model.size).single { resultFiles.model.getElementAt(it).toString().startsWith("probe.txt —") }
                 requests.clear()
-                click(panel, "Open complete-result diff")
+                click(panel, "Open result diff")
             }
             await("checked candidate diff") { requests.size == 1 }
             withContext(Dispatchers.EDT) { assertEquals("checked candidate\n", (requests.single().contents[1] as DocumentContent).document.text) }
-            await("renewed review enabled") { button(panel, "Accept complete result").isEnabled }
-            withContext(Dispatchers.EDT) { click(panel, "Accept complete result") }
-            await("renewed hash-bound acceptance") { field(panel, "Candidate review status").text.contains("Decision: accepted") && button(panel, "Reject complete result").isEnabled }
-            withContext(Dispatchers.EDT) { click(panel, "Reject complete result") }
+            await("renewed review enabled") { button(panel, "Accept result").isEnabled }
+            withContext(Dispatchers.EDT) { click(panel, "Accept result") }
+            await("renewed hash-bound acceptance") { field(panel, "Candidate review status").text.contains("Decision: accepted") && button(panel, "Reject result").isEnabled }
+            withContext(Dispatchers.EDT) { click(panel, "Reject result") }
             await("whole-result rejection") { field(panel, "Candidate review status").text.contains("Decision: rejected") }
         } finally {
             withContext(Dispatchers.EDT) {
@@ -456,7 +456,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
     }
     private fun components(root: Container): List<Component> = root.components.flatMap { listOf(it) + if (it is Container) components(it) else emptyList() }
     private fun field(root: Container, name: String) = components(root).filterIsInstance<JTextComponent>().single { it.accessibleContext.accessibleName == name }
-    private fun button(root: Container, text: String) = components(root).filterIsInstance<JButton>().single { it.text == text }
+    private fun button(root: Container, text: String) = components(root).filterIsInstance<JButton>().single { it.text == text || it.accessibleContext.accessibleName == text }
     private fun click(root: Container, text: String) {
         val button = button(root, text)
         assertTrue("$text must be enabled", button.isEnabled)

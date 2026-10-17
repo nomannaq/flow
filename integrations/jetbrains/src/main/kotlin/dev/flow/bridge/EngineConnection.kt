@@ -120,6 +120,7 @@ internal class EngineConnection(private val process: Process, scope: CoroutineSc
                 error("unreachable")
             }
         } catch (cancelled: CancellationException) {
+            tracker?.abandon(id)
             epoch?.let { outgoing.trySend(ProtocolJson.frame(ProtocolJson.notification(ProtocolJson.cancel(id, it)))) }
             throw cancelled
         }

@@ -11,6 +11,7 @@ import com.intellij.openapi.components.Storage
 @State(name = "FlowCodexSettings", storages = [Storage(value = "flow-codex.xml", roamingType = RoamingType.DISABLED)])
 internal class CodexSettings : PersistentStateComponent<CodexSettings.Preferences> {
     class Preferences {
+        var adapterProfile: String = "automatic"
         var executable: String = ""
         var model: String = ""
     }
@@ -19,8 +20,19 @@ internal class CodexSettings : PersistentStateComponent<CodexSettings.Preference
     override fun loadState(state: Preferences) {
         preferences = state
     }
-    fun save(executable: String, model: String) {
+    fun selectProfile(profile: String) {
+        require(profile in listOf("automatic", "codex", "claude"))
         preferences = Preferences().also {
+            it.adapterProfile = profile
+            if (profile == preferences.adapterProfile) {
+                it.executable = preferences.executable
+                it.model = preferences.model
+            }
+        }
+    }
+    fun save(executable: String, model: String, adapterProfile: String = "automatic") {
+        preferences = Preferences().also {
+            it.adapterProfile = adapterProfile
             it.executable = executable
             it.model = model
         }
