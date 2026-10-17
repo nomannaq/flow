@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/protocol", "crates/runtime", "crates/history", "crates/engine"]
+members = ["crates/protocol", "crates/runtime", "crates/history", "crates/engine", "crates/context"]
 default-members = ["crates/engine"]
 resolver = "3"
 
@@ -13,6 +13,11 @@ publish = false
 protocol = { path = "crates/protocol" }
 runtime = { path = "crates/runtime" }
 history = { path = "crates/history" }
+context = { path = "crates/context" }
+tree-sitter = "=0.26.13"
+tree-sitter-rust = "=0.24.2"
+rmcp = { version = "=3.5.1", default-features = false, features = ["server", "macros", "schemars", "transport-io"] }
+genai = { version = "=0.6.5", default-features = false, features = ["rustls-tls"] }
 
 agent-client-protocol = { version = "3.3.0", default-features = false, features = ["process"] }
 futures-util = { version = "0.3", features = ["sink"] }
