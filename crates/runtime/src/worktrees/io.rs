@@ -271,7 +271,7 @@ where
     }
     Ok(bytes)
 }
-pub(super) fn text(bytes: Vec<u8>) -> Result<String> {
+pub(crate) fn text(bytes: Vec<u8>) -> Result<String> {
     let text = String::from_utf8(bytes)
         .map_err(|_| Error::Invalid("non-UTF-8 Git paths are unsupported"))?;
     Ok(text.strip_suffix('\n').unwrap_or(&text).to_owned())

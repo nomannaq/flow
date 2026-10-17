@@ -2,6 +2,8 @@
 mod agents;
 mod durable;
 mod messages;
+mod productivity;
+pub use productivity::*;
 
 pub use agents::*;
 pub use durable::*;
@@ -18,6 +20,9 @@ pub const MAX_TIMEOUT_MS: u64 = 30_000;
 #[derive(schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Contract {
+    pub context_query: ContextQuery,
+    pub overlay_selection: OverlaySelection,
+    pub utility_request: UtilityRequest,
     pub apply_prepare: ApplyPrepare,
     pub apply_query: ApplyQuery,
     pub apply_action: ApplyAction,
@@ -45,6 +50,7 @@ pub struct Contract {
     pub agent_start: AgentStart,
     pub agent_command: AgentCommand,
     pub agent_authenticate: AgentAuthenticate,
+    pub agent_configure: AgentConfigure,
     pub permission_decision: PermissionDecision,
     pub agent_view: AgentView,
 }

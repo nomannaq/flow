@@ -65,6 +65,27 @@ pub enum JsonRpc {
 /// future methods produce METHOD_NOT_FOUND rather than a JSON parse failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Method {
+    #[serde(rename = "context.initialize")]
+    ContextInitialize,
+    #[serde(rename = "context.overview")]
+    ContextOverview,
+    #[serde(rename = "context.preview")]
+    ContextPreview,
+    #[serde(rename = "context.search")]
+    ContextSearch,
+    #[serde(rename = "context.symbol")]
+    ContextSymbol,
+    #[serde(rename = "context.freshness")]
+    ContextFreshness,
+    #[serde(rename = "overlay.preview")]
+    OverlayPreview,
+    #[serde(rename = "commit.selection")]
+    CommitSelection,
+    #[serde(rename = "utilities.prepare")]
+    UtilityPrepare,
+    #[serde(rename = "utilities.generate")]
+    UtilityGenerate,
+
     #[serde(rename = "apply.plan")]
     ApplyPlan,
     #[serde(rename = "apply.get")]
@@ -120,6 +141,8 @@ pub enum Method {
     SessionBaseline,
     #[serde(rename = "sessions.authenticate")]
     SessionAuthenticate,
+    #[serde(rename = "sessions.configure")]
+    SessionConfigure,
     #[serde(rename = "sessions.start")]
     SessionStart,
     #[serde(rename = "sessions.active")]
@@ -148,6 +171,17 @@ pub enum Method {
 impl Method {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
+            "context.initialize" => Some(Self::ContextInitialize),
+            "context.overview" => Some(Self::ContextOverview),
+            "context.preview" => Some(Self::ContextPreview),
+            "context.search" => Some(Self::ContextSearch),
+            "context.symbol" => Some(Self::ContextSymbol),
+            "context.freshness" => Some(Self::ContextFreshness),
+            "overlay.preview" => Some(Self::OverlayPreview),
+            "commit.selection" => Some(Self::CommitSelection),
+            "utilities.prepare" => Some(Self::UtilityPrepare),
+            "utilities.generate" => Some(Self::UtilityGenerate),
+
             "apply.plan" => Some(Self::ApplyPlan),
             "apply.get" => Some(Self::ApplyGet),
             "apply.list" => Some(Self::ApplyList),
@@ -176,6 +210,7 @@ impl Method {
             "sessions.list" => Some(Self::SessionList),
             "sessions.baseline" => Some(Self::SessionBaseline),
             "sessions.authenticate" => Some(Self::SessionAuthenticate),
+            "sessions.configure" => Some(Self::SessionConfigure),
             "sessions.start" => Some(Self::SessionStart),
             "sessions.active" => Some(Self::SessionActive),
             "sessions.prompt" => Some(Self::SessionPrompt),

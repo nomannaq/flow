@@ -2,10 +2,14 @@ mod candidates;
 mod session_history;
 use tracing_subscriber::EnvFilter;
 mod maintenance;
+mod productivity;
 mod rpc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("mcp-bridge")) {
+        return runtime::context_bridge::run().await;
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--agent-launch")) {
         let _ = runtime::agents::launch(std::env::args_os().skip(2)).await;
         eprintln!("Flow adapter launcher failed");
