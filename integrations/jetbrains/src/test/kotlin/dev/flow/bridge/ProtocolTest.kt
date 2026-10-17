@@ -12,6 +12,17 @@ import java.util.concurrent.TimeUnit
 
 class ProtocolTest {
     @Test
+    fun connectionOnlyAndConfigSelectionNeverInventValuesOrSendAPrompt() {
+        val request = AgentProtocol.start(java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "adapter").toAbsolutePath().toString(), "[]", "a".repeat(40), "", "", connectOnly = true)
+        assertTrue(request["connectOnly"].asBoolean)
+        assertEquals("", request["prompt"].asString)
+        val option = AgentConfigOption("speed", "Speed", "", "", "select", com.google.gson.JsonPrimitive("standard"), listOf(AgentConfigChoice("standard", "Standard"), AgentConfigChoice("fast", "Fast")))
+        assertEquals("fast", AgentProtocol.configure("session", option, com.google.gson.JsonPrimitive("fast"))["value"].asString)
+        assertThrows(IllegalArgumentException::class.java) { AgentProtocol.configure("session", option, com.google.gson.JsonPrimitive("invented")) }
+        assertThrows(IllegalArgumentException::class.java) { AgentProtocol.configure("session", option, com.google.gson.JsonPrimitive(true)) }
+    }
+
+    @Test
     fun oneTimePermissionSemanticsDoNotDependOnDisplayLabels() {
         val input = resource("golden.json").getAsJsonObject("agentView").deepCopy()
         val option = input.getAsJsonArray("permissions")[0].asJsonObject.getAsJsonArray("options")[0].asJsonObject
@@ -63,6 +74,7 @@ class ProtocolTest {
         val value = resource("golden.json")["agentView"].asJsonObject
         value.addProperty("recordedOperations", 3)
         value.addProperty("compatibility", "Unverified adapter")
+        value.add("agentInfo", JsonObject().apply { addProperty("name", "claude-agent-acp") })
         value.add(
             "activity",
             com.google.gson.JsonArray().apply {
@@ -78,6 +90,9 @@ class ProtocolTest {
         assertEquals(listOf("Hello world"), view.activity)
         assertEquals(3L, view.recordedOperations)
         assertEquals("Unverified adapter", view.compatibility)
+        assertEquals("claude-agent-acp", view.agentName)
+        value.add("agentInfo", com.google.gson.JsonNull.INSTANCE)
+        assertEquals("", AgentProtocol.view(value).agentName)
     }
 
     @Test
@@ -253,5 +268,17 @@ class ProtocolTest {
             process.waitFor(5, TimeUnit.SECONDS)
             executor.shutdownNow()
         }
+    }
+
+    @org.junit.Test
+    fun cancelledRequestsFreeCapacityWithoutReusingIds() {
+        val tracker = RequestTracker(EngineEpoch("cancel-fixture"))
+        repeat(100) { value ->
+            val id = RequestId.Number(value.toLong())
+            tracker.register(id, 1000)
+            tracker.abandon(id)
+        }
+        tracker.register(RequestId.Number(101), 1000)
+        org.junit.Assert.assertEquals(1, tracker.disconnect().size)
     }
 }

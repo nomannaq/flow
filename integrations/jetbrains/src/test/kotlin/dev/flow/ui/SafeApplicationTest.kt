@@ -101,13 +101,13 @@ class SafeApplicationTest : LightPlatformTestCase() {
                 components(panel).filterIsInstance<JCheckBox>().single().doClick(0)
                 click(panel, "Plan application")
             }
-            await { status(panel).contains("Status: conflicted") && button(panel, "Load application journals").isEnabled }
+            await { status(panel).contains("Status: conflicted") && button(panel, "Load application history").isEnabled }
             withContext(Dispatchers.EDT) {
                 val files = components(panel).filterIsInstance<JList<*>>().single { it.accessibleContext.accessibleName == "Application files" }
                 files.selectedIndex = (0 until files.model.size).single { files.model.getElementAt(it).toString().endsWith("probe.txt") }
-                click(panel, "Resolve selected text conflict")
+                click(panel, "Resolve conflict")
             }
-            await { renewed != null && button(panel, "Load application journals").isEnabled }
+            await { renewed != null && button(panel, "Load application history").isEnabled }
             val version = requireNotNull(renewed)
             assertFalse(candidate["id"].asString == version)
             // New bytes cannot use the original acceptance.
@@ -117,15 +117,15 @@ class SafeApplicationTest : LightPlatformTestCase() {
             withContext(Dispatchers.EDT) {
                 panel.selectCandidate(version) // Returning from review keeps the merge plan.
                 components(panel).filterIsInstance<JCheckBox>().single().doClick(0)
-                click(panel, "Apply complete result")
+                click(panel, "Apply result")
             }
-            await { status(panel).contains("Status: complete") && button(panel, "Roll back verified Flow writes").isEnabled }
+            await { status(panel).contains("Status: complete") && button(panel, "Roll back Flow writes").isEnabled }
             val applyElapsedMs = (System.nanoTime() - applyStarted) / 1_000_000.0
             assertEquals("developer + agent resolved\n", Files.readString(repository.resolve("probe.txt")))
             assertTrue(index.contentEquals(Files.readAllBytes(repository.resolve(".git/index"))))
             val rollbackStarted = System.nanoTime()
-            withContext(Dispatchers.EDT) { click(panel, "Roll back verified Flow writes") }
-            await { status(panel).contains("Status: rolledBack") && button(panel, "Load application journals").isEnabled }
+            withContext(Dispatchers.EDT) { click(panel, "Roll back Flow writes") }
+            await { status(panel).contains("Status: rolledBack") && button(panel, "Load application history").isEnabled }
             val rollbackElapsedMs = (System.nanoTime() - rollbackStarted) / 1_000_000.0
             assertEquals("developer\n", Files.readString(repository.resolve("probe.txt")))
             assertEquals("unstaged sentinel\n", Files.readString(repository.resolve("sentinel.txt")))
