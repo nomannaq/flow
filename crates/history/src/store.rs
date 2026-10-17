@@ -47,6 +47,22 @@ pub struct HistoryStore {
     directory: PathBuf,
 }
 impl HistoryStore {
+    /// Derived caches have separate versioned databases. Their failure never
+    /// changes authoritative history or puts it into recovery mode.
+    pub fn context_database(&self) -> Result<Connection> {
+        let directory = self.directory.join("derived");
+        blobs::directory(&directory)?;
+        let path = directory.join("context-v1.sqlite");
+        if path
+            .symlink_metadata()
+            .is_ok_and(|m| !m.is_file() || m.file_type().is_symlink())
+        {
+            return Err(Error::Invalid("derived database was redirected"));
+        }
+        let conn = Connection::open(path)?;
+        conn.busy_timeout(std::time::Duration::from_secs(2))?;
+        Ok(conn)
+    }
     /// `data_root` must exist and be outside every repository. Storage uses a
     /// canonical-project hash below it; callers cannot select arbitrary DB files.
     pub fn open(project_root: &Path, data_root: &Path) -> Result<Self> {
@@ -381,6 +397,31 @@ impl HistoryStore {
     }
     /// Persist runtime transitions and bounded agent events without claiming
     /// tool-reported edits are verified filesystem operations.
+    pub fn context_event(&self, session: SessionId, payload: Value) -> Result<()> {
+        if json(&payload)?.len() > 4096 {
+            return Err(Error::BudgetExceeded);
+        }
+        self.call(move |db| {
+            db.require_write(0)?;
+            let tx = db
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let record: Session = load_record(
+                &tx,
+                "SELECT record FROM sessions WHERE id=?1",
+                session.as_str(),
+            )?;
+            event(
+                &tx,
+                &record.workspace_id,
+                Some(&session),
+                "context.query",
+                payload,
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
     pub fn agent_event(
         &self,
         session: SessionId,

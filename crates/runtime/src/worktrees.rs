@@ -93,6 +93,7 @@ impl Repository {
 #[derive(Clone, Debug)]
 pub enum BaselineChoice {
     CleanCommit(String),
+    SelectedOverlay(String, protocol::OverlaySelection),
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Stage {
@@ -189,7 +190,17 @@ impl WorktreeManager {
             self.repository_lease.owner.clone(),
         )?;
         validate(&self.repository.root)?;
-        let BaselineChoice::CleanCommit(commit) = choice;
+        let (commit, overlay) = match choice {
+            BaselineChoice::CleanCommit(commit) => (commit, None),
+            BaselineChoice::SelectedOverlay(commit, selection) => (commit, Some(selection)),
+        };
+        let imported = overlay
+            .as_ref()
+            .map(|s| crate::local_changes::freeze(&self.repository.root, s))
+            .transpose()?;
+        if overlay.is_some() && commit != self.repository.head {
+            return Err(Error::Unstable);
+        }
         if ![40, 64].contains(&commit.len()) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(Error::Invalid(
                 "select a full resolved commit ID for the clean baseline",
@@ -212,6 +223,12 @@ impl WorktreeManager {
             ));
         }
         let source = source_fingerprint(&self.repository.root)?;
+        if overlay
+            .as_ref()
+            .is_some_and(|s| s.fingerprint != source.as_str())
+        {
+            return Err(Error::Unstable);
+        }
         let owner = token()?;
         let id = WorkspaceId::try_from(format!("workspace-{owner}"))
             .map_err(|_| Error::Invalid("invalid workspace identity"))?;
@@ -262,7 +279,7 @@ impl WorktreeManager {
         record.stage = Stage::Created;
         self.save(&record)?;
         checkpoint(Stage::Created)?;
-        let files = capture(&path)?;
+
         if !git(
             &path,
             ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
@@ -278,6 +295,19 @@ impl WorktreeManager {
                 "main project changed during preparation; retry after inspecting the retained worktree",
             ));
         }
+        if let Some(imported) = imported {
+            crate::local_changes::materialize(&path, imported)?;
+        }
+        // An imported staged .gitignore can hide a separately selected disk
+        // file. All materialized bytes still belong to the imported baseline.
+        let files = if overlay.is_some() {
+            capture_all(&path)?
+        } else {
+            capture(&path)?
+        };
+        if source != source_fingerprint(&self.repository.root)? {
+            return Err(Error::Unstable);
+        }
         self.store
             .register_workspace(key(&owner, "register")?, record.workspace.clone())?;
         let receipt = self.store.publish_snapshot(
@@ -291,9 +321,15 @@ impl WorktreeManager {
                 },
                 started_at_ms: record.started_at_ms,
                 completed_at_ms: now()?,
-                provenance: format!(
-                    "B07 clean commit {commit}; local edits and unsaved buffers excluded"
-                ),
+                provenance: match &overlay {
+                    Some(selection) => format!(
+                        "B13 selected overlay on {commit}: {}",
+                        serde_json::to_string(selection).unwrap()
+                    ),
+                    None => format!(
+                        "B07 clean commit {commit}; local edits and unsaved buffers excluded"
+                    ),
+                },
             },
         )?;
         record.baseline = Some(
@@ -802,7 +838,7 @@ fn identity(meta: &fs::Metadata) -> (u64, u64, u64, u32) {
         meta.file_attributes(),
     )
 }
-fn source_fingerprint(root: &Path) -> Result<ContentId> {
+pub(crate) fn source_fingerprint(root: &Path) -> Result<ContentId> {
     let head = git(root, ["rev-parse", "HEAD"])?;
     let git_dir = PathBuf::from(text(git(root, ["rev-parse", "--absolute-git-dir"])?)?);
     let index = fs::read(git_dir.join("index"))?;

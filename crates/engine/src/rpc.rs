@@ -68,6 +68,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     store: Option<history::HistoryStore>,
     agents: &mut Option<runtime::agents::AgentHost>,
 ) -> io::Result<()> {
+    let productivity_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
     let application = std::sync::Arc::new(runtime::application::ApplyHost::default());
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|_| io::Error::other("epoch generation failed"))?;
@@ -230,7 +231,23 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             (id,response)
                         }));
                     }
-                    Some(method @ (Method::SessionStart | Method::SessionAuthenticate | Method::SessionActive | Method::SessionPrompt | Method::SessionCancel | Method::SessionClose | Method::PermissionRespond)) => {
+                    Some(method @ (Method::ContextInitialize | Method::ContextPreview | Method::ContextOverview | Method::ContextSearch | Method::ContextSymbol | Method::ContextFreshness | Method::OverlayPreview | Method::CommitSelection | Method::UtilityPrepare | Method::UtilityGenerate)) => {
+                        let Some(store)=store.clone() else { send(&mut output,failure(error::METHOD_NOT_FOUND)).await?; continue; };
+                        let Ok(permit)=productivity_slots.clone().try_acquire_owned() else { send(&mut output,failure(error::BUSY)).await?; continue; };
+                        let token=CancellationToken::new(); pending.insert(id.clone(),token.clone());
+                        let epoch=epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            let _permit=permit;
+                            let _cancel=token.clone().drop_guard();
+                            let result=tokio::select! {
+                                _=token.cancelled()=>Err(error::CANCELLED),
+                                result=timeout(Duration::from_millis(timeout_ms),crate::productivity::request(store,method,request.params,token.clone()))=>result.map_err(|_|error::TIMEOUT),
+                            };
+                            let response=match result { Ok(value)=>Response::success(id.clone(),epoch,value),Err(code)=>Response::failure(Some(id.clone()),Some(epoch),code) };
+                            (id,response)
+                        }));
+                    }
+                    Some(method @ (Method::SessionStart | Method::SessionAuthenticate | Method::SessionConfigure | Method::SessionActive | Method::SessionPrompt | Method::SessionCancel | Method::SessionClose | Method::PermissionRespond)) => {
                         let Some(host) = agents.as_mut() else {
                             send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue;
                         };
@@ -238,6 +255,8 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             Method::SessionActive => serde_json::to_value(host.view()).map_err(|_| ()),
                             Method::SessionAuthenticate => serde_json::from_value::<AgentAuthenticate>(request.params).map_err(|_| ())
                                 .and_then(|params| host.authenticate(params).map(|()| Value::Null).map_err(|_| ())),
+                            Method::SessionConfigure => serde_json::from_value::<AgentConfigure>(request.params).map_err(|_| ())
+                                .and_then(|params| host.configure(params).map(|()| Value::Null).map_err(|_| ())),
                             Method::SessionStart => serde_json::from_value::<AgentStart>(request.params).map_err(|_| ())
                                 .and_then(|params| host.start(params).map(|id| serde_json::json!({"sessionId":id})).map_err(|_| ())),
                             Method::PermissionRespond => serde_json::from_value::<PermissionDecision>(request.params).map_err(|_| ())
