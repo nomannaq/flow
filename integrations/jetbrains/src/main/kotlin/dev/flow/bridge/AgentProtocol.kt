@@ -5,6 +5,15 @@ import com.google.gson.JsonObject
 import java.nio.file.Path
 
 internal data class AgentPermission(val id: String, val title: String, val tool: String, val options: List<Pair<String, String>>, val allowOnce: Set<String> = emptySet())
+internal data class AgentEvent(val kind: String, val text: String)
+internal data class AgentConfigChoice(val value: String, val name: String, val description: String = "", val group: String = "")
+internal data class AgentConfigOption(val id: String, val name: String, val description: String, val category: String, val kind: String, val currentValue: com.google.gson.JsonElement, val options: List<AgentConfigChoice>) {
+    val currentLabel: String get() = if (kind == "boolean") {
+        if (currentValue.asBoolean) "On" else "Off"
+    } else {
+        options.firstOrNull { it.value == currentValue.asString }?.name ?: currentValue.asString
+    }
+}
 internal data class AgentView(
     val id: String? = null,
     val status: String = "No active session",
@@ -14,6 +23,10 @@ internal data class AgentView(
     val authMethods: List<String> = emptyList(),
     val compatibility: String = "",
     val recordedOperations: Long = 0,
+    val events: List<AgentEvent> = emptyList(),
+    val configOptions: List<AgentConfigOption> = emptyList(),
+    val configurationError: String = "",
+    val agentName: String = "",
 )
 
 internal object AgentProtocol {
@@ -51,9 +64,39 @@ internal object AgentProtocol {
             value.getAsJsonArray("authMethods")?.map { it.asString.also { id -> require(id.length <= 256) } }?.also { require(it.size <= 32) }.orEmpty(),
             optional("compatibility").orEmpty().also { require(it.length <= 4096) },
             value["recordedOperations"]?.asLong?.also { require(it >= 0) } ?: 0,
+            activity.map { AgentEvent(it.asJsonObject["kind"].asString, it.asJsonObject["text"].asString) },
+            configOptions(value.getAsJsonArray("configOptions") ?: JsonArray()),
+            optional("configurationError").orEmpty().also { require(it.length <= 4096) },
+            value["agentInfo"]?.takeIf { it.isJsonObject }?.asJsonObject?.get("name")?.takeUnless { it.isJsonNull }?.asString.orEmpty().also { require(it.length <= 256) },
         )
     }
-    fun start(executable: String, arguments: String, commit: String, prompt: String, authMethod: String, sourceSessionId: String? = null, writersStopped: Boolean = false, model: String = ""): JsonObject {
+    fun configOptions(items: JsonArray): List<AgentConfigOption> {
+        require(items.size() <= 65 && items.toString().toByteArray().size <= 200 * 1024)
+        return items.map { item ->
+            val option = item.asJsonObject
+            fun text(key: String, limit: Int = 256) = option[key].asString.also { require(it.length <= limit) }
+            val kind = text("kind")
+            require(kind in setOf("select", "boolean", "mode"))
+            val current = option["currentValue"]
+            require(current.isJsonPrimitive && if (kind == "boolean") current.asJsonPrimitive.isBoolean else current.asJsonPrimitive.isString && current.asString.length <= 256)
+            val options = option.getAsJsonArray("options")
+            require(options.size() <= 256)
+            AgentConfigOption(
+                text("id"),
+                text("name"),
+                text("description", 2048),
+                text("category", 128),
+                kind,
+                current,
+                options.map { choice ->
+                    val value = choice.asJsonObject
+                    fun field(key: String, limit: Int = 256) = value[key].asString.also { require(it.length <= limit) }
+                    AgentConfigChoice(field("value"), field("name"), field("description", 2048), field("group"))
+                },
+            )
+        }.also { options -> require(options.map { it.id }.distinct().size == options.size) }
+    }
+    fun start(executable: String, arguments: String, commit: String, prompt: String, authMethod: String, sourceSessionId: String? = null, writersStopped: Boolean = false, model: String = "", connectOnly: Boolean = false): JsonObject {
         require(runCatching { executable.length <= 4096 && Path.of(executable).isAbsolute }.getOrDefault(false)) {
             "Enter the absolute path to your ACP adapter executable."
         }
@@ -61,7 +104,7 @@ internal object AgentProtocol {
             "Choose a baseline with Use current commit, or paste a full Git commit hash. A filename is not a commit."
         }
         require(sourceSessionId == null || (writersStopped && Regex("[A-Za-z0-9._:-]{1,128}").matches(sourceSessionId))) { "Confirm all previous session writers have stopped." }
-        require(prompt.isNotBlank()) { "Enter a task in the prompt box before starting a session." }
+        require(if (connectOnly) prompt.isEmpty() else prompt.isNotBlank()) { "Enter a task in the prompt box before starting a session." }
         require(prompt.toByteArray().size <= 32768) { "The prompt must be at most 32 KiB." }
         val args = try {
             ProtocolJson.parse("{\"arguments\":$arguments}").getAsJsonArray("arguments").also { args ->
@@ -80,6 +123,7 @@ internal object AgentProtocol {
         require(authMethod.length <= 256) { "Authentication method must be at most 256 characters." }
         return JsonObject().apply {
             addProperty("executable", executable)
+            if (connectOnly) addProperty("connectOnly", true)
             add(
                 "arguments",
                 JsonArray().apply {
@@ -99,6 +143,11 @@ internal object AgentProtocol {
             addProperty("prompt", prompt)
             if (authMethod.isNotBlank()) addProperty("authMethod", authMethod)
         }
+    }
+    fun configure(id: String, option: AgentConfigOption, value: com.google.gson.JsonElement) = command(id).apply {
+        require(if (option.kind == "boolean") value.isJsonPrimitive && value.asJsonPrimitive.isBoolean else value.isJsonPrimitive && value.asJsonPrimitive.isString && option.options.any { it.value == value.asString })
+        addProperty("configId", option.id)
+        add("value", value)
     }
     fun command(id: String, prompt: String = "") = JsonObject().apply {
         addProperty("sessionId", id)

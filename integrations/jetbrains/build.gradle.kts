@@ -25,6 +25,7 @@ repositories {
 dependencies {
     intellijPlatform {
         intellijIdea("2025.3.6.1")
+        bundledPlugin("Git4Idea")
         testFramework(TestFrameworkType.Platform)
         pluginVerifier("1.410")
     }

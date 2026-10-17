@@ -17,7 +17,6 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
-import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBUI
 import dev.flow.bridge.EngineController
 import dev.flow.bridge.EngineView
@@ -35,7 +34,6 @@ import java.util.UUID
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JCheckBox
-import javax.swing.JPanel
 
 internal class ApplicationPanel(
     private val project: Project,
@@ -47,16 +45,16 @@ internal class ApplicationPanel(
 ) : JBPanel<ApplicationPanel>(BorderLayout()),
     Disposable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.EDT)
-    private val stopped = JCheckBox("I verified all session writers have stopped")
+    private val stopped = JCheckBox("I verified all writers have stopped")
     private val planButton = JButton("Plan application")
-    private val refresh = JButton("Load application journals")
-    private val inspect = JButton("Inspect immutable apply inputs")
-    private val merge = JButton("Resolve selected text conflict")
-    private val apply = JButton("Apply complete result")
+    private val refresh = JButton("Load application history")
+    private val inspect = JButton("Inspect inputs")
+    private val merge = JButton("Resolve conflict")
+    private val apply = JButton("Apply result")
     private val cancel = JButton("Cancel application")
-    private val reconcile = JButton("Inspect interrupted application")
-    private val rollback = JButton("Roll back verified Flow writes")
-    private val review = JButton("Review candidate before applying")
+    private val reconcile = JButton("Inspect interrupted writes")
+    private val rollback = JButton("Roll back Flow writes")
+    private val review = JButton("Review candidate")
     private val summary = JBTextArea(6, 30).apply {
         isEditable = false
         lineWrap = true
@@ -89,18 +87,34 @@ internal class ApplicationPanel(
     private var job: Job? = null
 
     init {
+        border = JBUI.Borders.empty(8)
+        summary.font = javax.swing.UIManager.getFont("Label.font")
+        summary.rows = 4
+        files.visibleRowCount = 6
         add(
-            JPanel(VerticalLayout(4)).apply {
-                add(stopped)
-                add(planButton)
-                add(refresh)
-                add(JBScrollPane(journals).apply { preferredSize = JBUI.size(0, 80) })
-                add(JBScrollPane(summary))
-            },
-            BorderLayout.NORTH,
+            FlowUi.scroll(
+                FlowUi.column(
+                    FlowUi.heading("Apply reviewed changes", "Resolve conflicts, then apply the accepted result to your project."),
+                    stopped,
+                    FlowUi.actions(FlowUi.primary(planButton)),
+                    FlowUi.scroll(summary, 100),
+                    FlowUi.field("Files to apply", FlowUi.scroll(files, 170)),
+                    FlowUi.actions(inspect, merge),
+                    FlowUi.actions(FlowUi.primary(apply), cancel),
+                    review,
+                    Disclosure(
+                        "Application history & recovery",
+                        FlowUi.column(
+                            FlowUi.note("Inspect interrupted applications and recover only verified Flow writes."),
+                            FlowUi.actions(refresh),
+                            FlowUi.scroll(journals, 100),
+                            FlowUi.actions(reconcile, rollback),
+                        ),
+                    ),
+                ),
+            ),
+            BorderLayout.CENTER,
         )
-        add(JBScrollPane(files), BorderLayout.CENTER)
-        add(JPanel(VerticalLayout(4)).apply { listOf(inspect, merge, review, apply, cancel, reconcile, rollback).forEach { add(it) } }, BorderLayout.SOUTH)
         stopped.addActionListener { buttons() }
         files.addListSelectionListener { buttons() }
         journals.addListSelectionListener { if (!busy && !it.valueIsAdjusting) journals.selectedValue?.let { row -> request { show(controller.historyRequest("apply.get", query(row.value)).asJsonObject) } } }
@@ -163,7 +177,7 @@ internal class ApplicationPanel(
                 }
             }
         }
-        summary.text = "Select an accepted candidate in Review result. Application preserves staging; affected unsaved buffers must be saved explicitly before planning."
+        summary.text = "Accept a candidate in the Review step first. Application preserves staging; affected unsaved buffers must be saved explicitly before planning."
         buttons()
     }
     fun update(view: EngineView) {

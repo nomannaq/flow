@@ -14,7 +14,6 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
-import com.intellij.ui.components.panels.VerticalLayout
 import dev.flow.bridge.EngineController
 import dev.flow.bridge.EngineView
 import dev.flow.bridge.optionalText
@@ -27,12 +26,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
-import java.awt.GridLayout
 import java.util.UUID
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JCheckBox
-import javax.swing.JPanel
 
 /** Whole-result decisions reference immutable Rust-owned candidates. */
 internal class CandidateReviewPanel(
@@ -45,17 +42,17 @@ internal class CandidateReviewPanel(
     Disposable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.EDT)
     private val session = JBTextField().apply { accessibleContext.accessibleName = "Candidate source session" }
-    private val stopped = JCheckBox("I verified all session writers have stopped")
-    private val prepare = JButton("Prepare complete result")
-    private val refresh = JButton("Refresh candidate")
-    private val more = JButton("Next candidate files")
-    private val open = JButton("Open complete-result diff")
-    private val accept = JButton("Accept complete result")
-    private val application = JButton("Plan application of accepted result")
-    private val reject = JButton("Reject complete result")
+    private val stopped = JCheckBox("I verified all writers have stopped")
+    private val prepare = JButton("Prepare result")
+    private val refresh = JButton("Refresh result")
+    private val more = JButton("More files")
+    private val open = JButton("Open result diff")
+    private val accept = JButton("Accept result")
+    private val application = JButton("Continue to apply")
+    private val reject = JButton("Reject result")
     private val command = JBTextField("[]").apply { accessibleContext.accessibleName = "Explicit candidate check command" }
-    private val runCheck = JButton("Run explicit check (15s)")
-    private val checkedVersion = JButton("Review checked version")
+    private val runCheck = JButton("Run check (15s)")
+    private val checkedVersion = JButton("Review checked result")
     private val summary = JBTextArea(5, 30).apply {
         isEditable = false
         lineWrap = true
@@ -90,55 +87,34 @@ internal class CandidateReviewPanel(
     private var revision = 0L
 
     init {
+        border = com.intellij.util.ui.JBUI.Borders.empty(8)
+        summary.font = javax.swing.UIManager.getFont("Label.font")
+        summary.rows = 4
+        files.visibleRowCount = 6
+        session.emptyText.text = "Select a closed session from History"
         add(
-            JPanel(VerticalLayout(4)).apply {
-                add(session)
-                add(stopped)
-                add(
-                    JPanel(GridLayout(1, 2, 4, 4)).apply {
-                        add(prepare)
-                        add(refresh)
-                    },
-                )
-                add(JBScrollPane(summary))
-            },
-            BorderLayout.NORTH,
-        )
-        add(JBScrollPane(files), BorderLayout.CENTER)
-        add(
-            JPanel(VerticalLayout(4)).apply {
-                add(
-                    JPanel(GridLayout(1, 2, 4, 4)).apply {
-                        add(open)
-                        add(more)
-                    },
-                )
-                add(
-                    JPanel(GridLayout(1, 2, 4, 4)).apply {
-                        add(accept)
-                        add(reject)
-                    },
-                )
-                add(
-                    JBTextArea("Optional check: JSON array of executable and arguments. Runs as your account in a temporary copy; commands and exit status are retained. No commands are read from repository instructions.").apply {
-                        isEditable = false
-                        rows = 3
-                        columns = 30
-                        isOpaque = false
-                        lineWrap = true
-                        wrapStyleWord = true
-                    },
-                )
-                add(application)
-                add(command)
-                add(
-                    JPanel(GridLayout(1, 2, 4, 4)).apply {
-                        add(runCheck)
-                        add(checkedVersion)
-                    },
-                )
-            },
-            BorderLayout.SOUTH,
+            FlowUi.scroll(
+                FlowUi.column(
+                    FlowUi.heading("Review the complete result", "Inspect the agent's changes before accepting them."),
+                    FlowUi.field("Source session", session),
+                    stopped,
+                    FlowUi.actions(FlowUi.primary(prepare), refresh),
+                    FlowUi.scroll(summary, 100),
+                    FlowUi.field("Changed files", FlowUi.scroll(files, 170)),
+                    FlowUi.actions(open, more),
+                    FlowUi.actions(FlowUi.primary(accept), reject),
+                    application,
+                    Disclosure(
+                        "Run an optional check",
+                        FlowUi.column(
+                            FlowUi.note("Runs as your account in a temporary copy. Enter an executable and arguments as a JSON array; commands and results are retained."),
+                            FlowUi.field("Check command", command),
+                            FlowUi.actions(runCheck, checkedVersion),
+                        ),
+                    ),
+                ),
+            ),
+            BorderLayout.CENTER,
         )
         application.addActionListener { candidate?.let { applyCandidate(it["id"].asString) } }
         stopped.addActionListener { buttons() }
