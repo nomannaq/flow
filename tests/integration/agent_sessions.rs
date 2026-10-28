@@ -69,7 +69,7 @@ impl Engine {
     }
     async fn ok(&mut self, method: &str, params: Value) -> Value {
         let value = self.call(method, params).await;
-        assert!(value.get("error").is_none(), "{value}");
+        assert!(value.get("error").is_none(), "{method}: {value}");
         value["result"].clone()
     }
     async fn start(&mut self, repo: &Repository, prompt: &str, flags: &[&str]) -> Value {
@@ -89,20 +89,29 @@ impl Engine {
             .unwrap();
         let mut arguments = vec![script.to_string_lossy().to_string(), "--heartbeat".into()];
         arguments.extend(flags.iter().map(|s| s.to_string()));
-        self.ok("sessions.start",json!({"executable":"/usr/bin/python3","arguments":arguments,"commit":commit,"prompt":prompt,"connectOnly":prompt.is_empty(),"adapterProfile":if flags.contains(&"--claude") {"claude"} else {""},"authMethod":if flags.contains(&"--needs-auth") {Some("fixture")} else {None}})).await["sessionId"].clone()
+        self.ok("sessions.start",json!({"executable":"/usr/bin/python3","arguments":arguments,"commit":commit,"prompt":prompt,"connectOnly":prompt.is_empty(),"adapterProfile":if flags.contains(&"--cursor") {"cursor"} else if flags.contains(&"--claude") {"claude"} else {""},"authMethod":if flags.contains(&"--needs-auth") {Some("fixture")} else {None}})).await["sessionId"].clone()
     }
     async fn wait(&mut self, predicate: impl Fn(&Value) -> bool) -> Value {
-        timeout(Duration::from_secs(15), async {
+        let mut last_status = String::new();
+        let result = timeout(Duration::from_secs(15), async {
             loop {
                 let view = self.ok("sessions.active", json!({})).await;
+                last_status = format!(
+                    "status={} kinds={:?}",
+                    view["status"],
+                    view["activity"].as_array().map(|items| items
+                        .iter()
+                        .map(|item| item["kind"].clone())
+                        .collect::<Vec<_>>())
+                );
                 if predicate(&view) {
                     return view;
                 }
                 sleep(Duration::from_millis(30)).await;
             }
         })
-        .await
-        .expect("agent state deadline")
+        .await;
+        result.unwrap_or_else(|_| panic!("agent state deadline: {last_status}"))
     }
     async fn shutdown(mut self) -> String {
         self.ok("engine.shutdown", json!({})).await;
@@ -130,6 +139,151 @@ async fn heartbeat_stops(workspace: &Path) {
         fs::read(workspace.parent().unwrap().join("fixture-heartbeat")).unwrap(),
         before
     );
+}
+
+#[tokio::test]
+async fn large_unicode_response_survives_live_projection_and_durable_replay() {
+    use protocol::ProtocolStore;
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let session = engine
+        .start(&repo, "Return a long response", &["--long-response"])
+        .await;
+    let view = engine.wait(|v| v["status"] == "ready").await;
+    let expected = "line 👩🏽‍💻中\n".repeat(2000);
+    let live: String = view["activity"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["kind"] == "message.delta")
+        .map(|row| row["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(live, expected);
+    engine.shutdown().await;
+    let store = history::HistoryStore::open(&repo.root, &repo.data).unwrap();
+    let mut after = store.snapshot().unwrap().high_water;
+    after.sequence = protocol::EventSequence(0);
+    let mut replayed = String::new();
+    loop {
+        let page = store
+            .replay(&protocol::ReplayParams {
+                after: after.clone(),
+                limit: 100,
+            })
+            .unwrap();
+        for event in &page.events {
+            if event.session_id.as_ref().map(|id| id.as_str()) == session.as_str()
+                && event.kind == "message.delta"
+            {
+                replayed.push_str(event.payload["text"].as_str().unwrap());
+            }
+            after = event.cursor.clone();
+        }
+        if !page.has_more {
+            break;
+        }
+    }
+    assert_eq!(replayed, expected);
+}
+
+#[tokio::test]
+async fn conversation_features_use_sdk_metadata_and_retained_session_scoped_journal() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let prompt = "Review 🦀 project\n".repeat(300);
+    let session = engine
+        .start(
+            &repo,
+            &prompt,
+            &[
+                "--conversation-features",
+                "--long-response",
+                "--delegation-tools",
+            ],
+        )
+        .await;
+    let view = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(view["availableCommands"][0]["name"], "review");
+    assert_eq!(view["availableCommands"][0]["inputHint"], "Optional scope");
+    assert_eq!(view["usage"]["used"], "12345");
+    assert_eq!(view["usage"]["size"], "200000");
+    assert_eq!(view["plan"]["entries"][0]["content"], "Read the project");
+    assert_eq!(view["plan"]["entries"][0]["status"], "completed");
+    assert_eq!(view["subagents"][0]["tool"]["name"], "Agent");
+    assert_eq!(view["subagents"][0]["tool"]["status"], "completed");
+    assert!(
+        view["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["tool"]["parentToolCallId"] == view["subagents"][0]["toolCallId"])
+    );
+    engine
+        .ok(
+            "sessions.label",
+            json!({"sessionId":session,"title":"Reviewed project","favorite":true}),
+        )
+        .await;
+    let found = engine
+        .ok(
+            "sessions.search",
+            json!({"query":"Reviewed project","favoritesOnly":true}),
+        )
+        .await;
+    assert_eq!(found["items"][0]["id"], session);
+    let mut after = Value::Null;
+    let mut through = Value::Null;
+    let mut user = String::new();
+    let mut response = String::new();
+    loop {
+        let page = engine
+            .ok(
+                "history.conversation",
+                json!({"sessionId":session,"after":after,"through":through}),
+            )
+            .await;
+        through = page["through"].clone();
+        for row in page["items"].as_array().unwrap() {
+            assert_eq!(row["legacy"], false);
+            match row["kind"].as_str().unwrap() {
+                "turn.started" | "turn.prompt.delta" => {
+                    user.push_str(row["text"].as_str().unwrap())
+                }
+                "message.delta" => response.push_str(row["text"].as_str().unwrap()),
+                _ => {}
+            }
+        }
+        after = page["next"].clone();
+        if after.is_null() {
+            break;
+        }
+    }
+    assert_eq!(user, prompt);
+    assert_eq!(response, "line 👩🏽‍💻中\n".repeat(2000));
+    engine.shutdown().await;
+    let mut restarted = Engine::new(&repo).await;
+    assert!(restarted.ok("sessions.active", json!({})).await["sessionId"].is_null());
+    let found = restarted
+        .ok(
+            "sessions.search",
+            json!({"query":"Reviewed project","favoritesOnly":true}),
+        )
+        .await;
+    assert_eq!(found["items"][0]["id"], session);
+    assert!(
+        restarted
+            .ok(
+                "history.conversation",
+                json!({"sessionId":session,"through":through})
+            )
+            .await["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "turn.started")
+    );
+    assert!(restarted.ok("sessions.active", json!({})).await["sessionId"].is_null());
+    restarted.shutdown().await;
 }
 
 #[tokio::test]
@@ -184,6 +338,41 @@ async fn prompts_permissions_followups_cancel_and_durable_lifecycle() {
         assert_eq!(
             fs::read(workspace.join("probe.txt")).unwrap(),
             b"flow-probe-1\n"
+        );
+        let live = engine.ok("sessions.active", json!({})).await;
+        let tool = live["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["toolCallId"] == "1")
+            .unwrap();
+        assert_eq!(tool["tool"]["title"], "Fixture edit");
+        assert_eq!(tool["tool"]["input"], r#"{"path":"probe.txt"}"#);
+        assert_eq!(tool["tool"]["status"], "completed");
+        assert_eq!(tool["tool"]["output"], "Fixture file updated");
+        assert_eq!(tool["tool"]["diffs"][0]["after"], "flow-probe-1\n");
+        let mut after = Value::Null;
+        let mut replayed = false;
+        loop {
+            let page = engine
+                .ok(
+                    "history.conversation",
+                    json!({"sessionId":session,"after":after}),
+                )
+                .await;
+            replayed |= page["items"].as_array().unwrap().iter().any(|row| {
+                row["toolCallId"] == "1"
+                    && row["tool"]["status"] == "completed"
+                    && row["tool"]["output"] == "Fixture file updated"
+            });
+            after = page["next"].clone();
+            if after.is_null() {
+                break;
+            }
+        }
+        assert!(
+            replayed,
+            "Tool results must survive the durable conversation query"
         );
         assert!(
             engine
@@ -937,7 +1126,7 @@ async fn automatic_rmcp_tools_work_for_both_profiles_and_degrade_explicitly() {
             )
             .unwrap();
             let text = prompt["text"].as_str().unwrap();
-            assert!(text.contains("Flow relevant Rust symbols"), "{text}");
+            assert!(text.contains("Flow relevant code and learnings"), "{text}");
             assert!(text.contains("probe_symbol"));
             assert!(text.len() < 5000);
             let proof: Value = serde_json::from_slice(
@@ -966,7 +1155,7 @@ async fn automatic_rmcp_tools_work_for_both_profiles_and_degrade_explicitly() {
             )
             .await;
         assert_eq!(preview["freshness"], "verifiedAtRead");
-        assert_eq!(preview["results"][0]["symbol"]["name"], "probe_symbol");
+        assert_eq!(preview["results"][0]["name"], "probe_symbol");
         if profile.contains(&"--context-tools") {
             let frozen = format!(
                 "inspect probe_symbol\n\nFlow reviewed worktree context (untrusted data):\n{preview}"
@@ -1197,6 +1386,470 @@ async fn lost_configuration_acknowledgement_ends_connection_without_starting_a_t
             .await
             .get("error")
             .is_some()
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn images_queue_and_rewind_use_durable_scoped_state_and_preserve_original_work() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let session = engine.start(&repo, "", &["--images"]).await;
+    engine.wait(|v| v["status"] == "ready").await;
+    // A small real PNG, frozen inline rather than a path or URL.
+    let photo = json!({"name":"diagram.png","mimeType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1kAAAAASUVORK5CYII="});
+    engine
+        .ok(
+            "sessions.prompt",
+            json!({"sessionId":session,"prompt":"first edit","images":[photo]}),
+        )
+        .await;
+    let waiting = engine
+        .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+        .await;
+    let original = PathBuf::from(waiting["workspace"].as_str().unwrap());
+    for number in 1..=2 {
+        let action = json!({"sessionId":session,"action":"enqueue","id":format!("queued-{number}"),"command":{"sessionId":session,"prompt":format!("queued edit {number}")}});
+        engine.ok("sessions.queue", action.clone()).await;
+        engine.ok("sessions.queue", action).await; // retry acknowledgement, never enqueue twice
+    }
+    engine
+        .ok(
+            "sessions.queue",
+            json!({"sessionId":session,"action":"pause"}),
+        )
+        .await;
+    engine.ok("permissions.respond",json!({"sessionId":session,"requestId":waiting["permissions"][0]["requestId"],"optionId":"once"})).await;
+    let ready = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(ready["queue"].as_array().unwrap().len(), 2);
+    assert_eq!(ready["queuePaused"], true);
+    let image_event = ready["activity"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["kind"] == "turn.started")
+        .unwrap();
+    let turn = image_event["turnId"].clone();
+    let image_id = image_event["images"][0]["id"].clone();
+    let stored = engine
+        .ok(
+            "history.image",
+            json!({"sessionId":session,"turnId":turn,"imageId":image_id}),
+        )
+        .await;
+    assert_eq!(stored["data"], photo["data"]);
+    assert!(
+        engine
+            .call(
+                "history.image",
+                json!({"sessionId":"foreign","turnId":turn,"imageId":image_id})
+            )
+            .await
+            .get("error")
+            .is_some()
+    );
+    let proof: Value =
+        serde_json::from_slice(&fs::read(original.join("image-proof.json")).unwrap()).unwrap();
+    assert_eq!(proof[0]["mimeType"], "image/png");
+    assert_eq!(proof[0]["hash"].as_str().unwrap().len(), 64);
+    engine
+        .ok(
+            "sessions.queue",
+            json!({"sessionId":session,"action":"resume"}),
+        )
+        .await;
+    for expected in 2..=3 {
+        let waiting = engine
+            .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        engine.ok("permissions.respond",json!({"sessionId":session,"requestId":waiting["permissions"][0]["requestId"],"optionId":"once"})).await;
+        if expected == 3 {
+            engine
+                .wait(|v| v["status"] == "ready" && v["queue"].as_array().is_none_or(Vec::is_empty))
+                .await;
+        }
+    }
+    let ready = engine.ok("sessions.active", json!({})).await;
+    let turns: Vec<_> = ready["activity"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "turn.started")
+        .collect();
+    assert_eq!(turns.len(), 3);
+    let second_turn = turns[1]["turnId"].clone();
+    let preview = engine
+        .ok(
+            "history.rewindPreview",
+            json!({"sessionId":session,"turnId":second_turn}),
+        )
+        .await;
+    assert_eq!(preview["complete"], true);
+    engine
+        .ok("sessions.close", json!({"sessionId":session}))
+        .await;
+    engine.wait(|v| v["status"] == "closed").await;
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/spikes/fixture_agent.py")
+        .canonicalize()
+        .unwrap();
+    let rewound=engine.ok("sessions.start",json!({"executable":"/usr/bin/python3","arguments":[script,"--images"],"sourceSessionId":session,"rewindTurnId":second_turn,"writersStopped":true,"prompt":"","connectOnly":true})).await["sessionId"].clone();
+    assert_ne!(rewound, session);
+    let view = engine.wait(|v| v["status"] == "ready").await;
+    let new_root = PathBuf::from(view["workspace"].as_str().unwrap());
+    assert_ne!(new_root, original);
+    assert_eq!(
+        fs::read(new_root.join("probe.txt")).unwrap(),
+        b"flow-probe-1\n"
+    );
+    assert_eq!(
+        fs::read(original.join("probe.txt")).unwrap(),
+        b"flow-probe-3\n"
+    );
+    assert!(!repo.root.join("probe.txt").exists());
+    engine.shutdown().await;
+    let mut restarted = Engine::new(&repo).await;
+    assert_eq!(
+        restarted
+            .ok(
+                "history.image",
+                json!({"sessionId":session,"turnId":turn,"imageId":image_id})
+            )
+            .await["data"],
+        photo["data"]
+    );
+    restarted.shutdown().await;
+}
+
+#[tokio::test]
+async fn unsupported_images_preserve_ready_session_and_stop_pauses_queued_prompts() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let session = engine.start(&repo, "", &[]).await;
+    engine.wait(|v| v["status"] == "ready").await;
+    assert!(engine.call("sessions.prompt",json!({"sessionId":session,"prompt":"look","images":[{"name":"test.png","mimeType":"image/png","data":"iVBORw0KGgo="}]})).await.get("error").is_some());
+    assert_eq!(
+        engine.ok("sessions.active", json!({})).await["status"],
+        "ready"
+    );
+    engine
+        .ok(
+            "sessions.prompt",
+            json!({"sessionId":session,"prompt":"waits 30 seconds"}),
+        )
+        .await;
+    engine
+        .wait(|v| {
+            v["activity"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "message.delta")
+        })
+        .await;
+    engine.ok("sessions.queue",json!({"sessionId":session,"action":"enqueue","id":"after-stop","command":{"sessionId":session,"prompt":"must not run"}})).await;
+    engine
+        .ok("sessions.cancel", json!({"sessionId":session}))
+        .await;
+    let ready = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(ready["queuePaused"], true);
+    assert_eq!(ready["queue"].as_array().unwrap().len(), 1);
+    sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        engine.ok("sessions.active", json!({})).await["status"],
+        "ready"
+    );
+    engine.shutdown().await;
+    let mut restarted = Engine::new(&repo).await;
+    let queue = restarted
+        .ok("queue.list", json!({"sessionId":session}))
+        .await;
+    assert_eq!(queue["paused"], true);
+    assert_eq!(
+        restarted
+            .ok("queue.get", json!({"sessionId":session,"id":"after-stop"}))
+            .await["prompt"],
+        "must not run"
+    );
+    restarted.shutdown().await;
+}
+
+#[tokio::test]
+async fn cursor_connects_once_and_reuses_its_acp_process_for_followups() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let session = engine
+        .start(&repo, "", &["--cursor", "--configuration", "--reject-mcp"])
+        .await;
+    let connected = engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(connected["agentInfo"]["name"], "cursor-agent");
+    for directory in fs::read_dir(&repo.data).unwrap() {
+        assert!(
+            !directory
+                .unwrap()
+                .path()
+                .join("derived/context-v1.sqlite")
+                .exists(),
+            "Connect must not run fallback indexing before a task"
+        );
+    }
+    assert_eq!(connected["connectionStage"], "ready");
+    let phases = connected["startupTimingsMs"].as_object().unwrap();
+    assert_eq!(phases.len(), 6);
+    assert!(phases["ready"].as_u64().unwrap() >= phases["adapter"].as_u64().unwrap());
+    assert!(
+        !connected["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "turn.started")
+    );
+    let workspace = PathBuf::from(connected["workspace"].as_str().unwrap());
+    let process = fs::read(workspace.join("fixture-pids.json")).unwrap();
+    for prompt in ["first task", "follow-up task"] {
+        engine
+            .ok(
+                "sessions.prompt",
+                json!({"sessionId":session,"prompt":prompt}),
+            )
+            .await;
+        let permission = engine
+            .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        engine.ok("permissions.respond",json!({"sessionId":session,"requestId":permission["permissions"][0]["requestId"],"optionId":"once"})).await;
+        engine.wait(|v| v["status"] == "ready").await;
+        assert_eq!(
+            fs::read(workspace.join("fixture-pids.json")).unwrap(),
+            process
+        );
+    }
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_changed_files_are_session_scoped_and_diffs_survive_later_edits() {
+    let repo = Repository::new();
+    let mut engine = Engine::new(&repo).await;
+    let session = engine.start(&repo, "write a file", &[]).await;
+    let waiting = engine
+        .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+        .await;
+    engine.ok("permissions.respond",json!({"sessionId":session,"requestId":waiting["permissions"][0]["requestId"],"optionId":"once"})).await;
+    engine.wait(|v| v["status"] == "ready").await;
+    let files = engine
+        .ok("history.changes", json!({"sessionId":session}))
+        .await;
+    assert_eq!(files["complete"], true);
+    let probe = files["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["newPath"] == "probe.txt")
+        .unwrap();
+    let query = json!({"sessionId":session,"snapshotId":files["snapshotId"],"fileIndex":probe["index"],"contentIds":probe["contentIds"]});
+    let first = engine.ok("history.changeDiff", query.clone()).await;
+    assert_eq!(first["before"], "");
+    assert_eq!(first["after"], "flow-probe-1\n");
+    engine
+        .ok(
+            "sessions.prompt",
+            json!({"sessionId":session,"prompt":"write again"}),
+        )
+        .await;
+    let waiting = engine
+        .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+        .await;
+    engine.ok("permissions.respond",json!({"sessionId":session,"requestId":waiting["permissions"][0]["requestId"],"optionId":"once"})).await;
+    engine.wait(|v| v["status"] == "ready").await;
+    assert_eq!(
+        engine.ok("history.changeDiff", query.clone()).await["after"],
+        "flow-probe-1\n"
+    );
+    let latest = engine
+        .ok("history.changes", json!({"sessionId":session}))
+        .await;
+    assert_ne!(latest["snapshotId"], files["snapshotId"]);
+    let mut forged = query.clone();
+    forged["sessionId"] = json!("foreign");
+    assert!(
+        engine
+            .call("history.changeDiff", forged)
+            .await
+            .get("error")
+            .is_some()
+    );
+    let mut forged = query;
+    forged["contentIds"]["after"] = json!("0".repeat(64));
+    assert!(
+        engine
+            .call("history.changeDiff", forged)
+            .await
+            .get("error")
+            .is_some()
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn generic_files_reach_claude_and_cursor_and_remain_frozen_in_queue_and_history() {
+    for profile in ["--claude", "--cursor"] {
+        let repo = Repository::new();
+        let mut engine = Engine::new(&repo).await;
+        let source = repo.root.join("external-report.pdf");
+        fs::write(&source, b"%PDF-1.7\noriginal\0binary").unwrap();
+        let imported = engine
+            .ok("attachments.import", json!({"paths":[source]}))
+            .await;
+        let file = imported["items"][0].clone();
+        fs::write(&source, b"developer changed the original").unwrap();
+        let session = engine.start(&repo, "", &[profile, "--attachments"]).await;
+        engine.wait(|v| v["status"] == "ready").await;
+        engine
+            .ok(
+                "sessions.prompt",
+                json!({"sessionId":session,"prompt":"Read this PDF","attachments":[file]}),
+            )
+            .await;
+        let waiting = engine
+            .wait(|v| !v["permissions"].as_array().unwrap().is_empty())
+            .await;
+        let workspace = PathBuf::from(waiting["workspace"].as_str().unwrap());
+        let proof: Value =
+            serde_json::from_slice(&fs::read(workspace.join("attachment-proof.json")).unwrap())
+                .unwrap();
+        assert_eq!(proof[1]["type"], "resource_link");
+        assert_eq!(proof[1]["mimeType"], "application/pdf");
+        let frozen = url::Url::parse(proof[1]["uri"].as_str().unwrap())
+            .unwrap()
+            .to_file_path()
+            .unwrap();
+        assert_eq!(fs::read(&frozen).unwrap(), b"%PDF-1.7\noriginal\0binary");
+        engine.ok("sessions.queue",json!({"sessionId":session,"action":"enqueue","id":"queued-pdf","command":{"sessionId":session,"prompt":"Read it again","attachments":[file]}})).await;
+        engine
+            .ok(
+                "sessions.queue",
+                json!({"sessionId":session,"action":"pause"}),
+            )
+            .await;
+        engine.ok("permissions.respond",json!({"sessionId":session,"requestId":waiting["permissions"][0]["requestId"],"optionId":"once"})).await;
+        let ready = engine.wait(|v| v["status"] == "ready").await;
+        let event = ready["activity"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["kind"] == "turn.started")
+            .unwrap();
+        assert_eq!(event["attachments"][0], file);
+        assert_eq!(ready["queue"][0]["attachmentCount"], 1);
+        let query = json!({"sessionId":session,"turnId":event["turnId"],"attachment":file});
+        assert_eq!(
+            engine.ok("history.attachment", query.clone()).await["path"],
+            frozen.to_string_lossy().as_ref()
+        );
+        let mut wrong = query.clone();
+        wrong["sessionId"] = json!("foreign");
+        assert!(
+            engine
+                .call("history.attachment", wrong)
+                .await
+                .get("error")
+                .is_some()
+        );
+        let queued = engine
+            .ok("queue.get", json!({"sessionId":session,"id":"queued-pdf"}))
+            .await;
+        assert_eq!(queued["attachments"][0], file);
+        assert_eq!(fs::read(source).unwrap(), b"developer changed the original");
+        engine.shutdown().await;
+        let mut restarted = Engine::new(&repo).await;
+        assert_eq!(
+            restarted.ok("history.attachment", query).await["attachment"],
+            file
+        );
+        restarted.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn code_intelligence_rpc_and_cli_use_the_same_fresh_project_index() {
+    let repo = Repository::new();
+    repo.write("helpers.ts", b"export function helper() {}\n");
+    repo.write(
+        "main.ts",
+        b"import { helper } from './helpers';\nfunction main() { helper(); }\n",
+    );
+    repo.git(&["add", "helpers.ts", "main.ts"]);
+    repo.git(&["commit", "-m", "code graph fixture"]);
+    // The offline CLI exits before the IDE engine opens the same history store.
+    let cli = Command::new(env!("CARGO_BIN_EXE_flow-engine"))
+        .args([
+            "--context",
+            "find",
+            "--project-root",
+            repo.root.to_str().unwrap(),
+            "--data-root",
+            repo.data.to_str().unwrap(),
+            "--params",
+            r#"{"query":"helper"}"#,
+        ])
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let from_cli: Value = serde_json::from_slice(&cli.stdout).unwrap();
+    assert_eq!(from_cli["results"][0]["name"], "helper");
+    let mut engine = Engine::new(&repo).await;
+    let found = engine.ok("context.find", json!({"query":"helper"})).await;
+    assert_eq!(from_cli["generation"], found["generation"]);
+    let trace = engine
+        .ok("context.trace", json!({"symbol":"helper","direction":"in"}))
+        .await;
+    assert!(
+        trace["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["relation"] == "calls" && edge["source"]["name"] == "main")
+    );
+    assert_eq!(
+        engine
+            .ok("context.fileApi", json!({"path":"helpers.ts"}))
+            .await["results"][0]["name"],
+        "helper"
+    );
+    let note=engine.ok("context.saveLearning",json!({"title":"Helper must stay small","body":"Keep this helper focused.","author":"Reviewer","touches":["helpers.ts"]})).await;
+    assert_eq!(note["immutable"], true);
+    assert_eq!(
+        engine
+            .ok("context.review", json!({"paths":["helpers.ts"]}))
+            .await["results"][0]["title"],
+        "Helper must stay small"
+    );
+    let rejected = engine
+        .ok(
+            "context.find",
+            json!({"query":"helper","root":"/elsewhere"}),
+        )
+        .await;
+    assert!(rejected["error"].as_str().is_some());
+    repo.write("helpers.ts", b"export function renamed() {}\n");
+    assert_eq!(
+        engine.ok("context.check", json!({})).await["freshness"],
+        "stale"
+    );
+    let fresh = engine.ok("context.find", json!({"query":"renamed"})).await;
+    assert_ne!(fresh["generation"], found["generation"]);
+    assert_eq!(fresh["results"][0]["name"], "renamed");
+    assert!(
+        engine.ok("context.graph", json!({})).await["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["type"] == "node")
     );
     engine.shutdown().await;
 }
