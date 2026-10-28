@@ -1,5 +1,5 @@
 use history::{ContentId, HistoryStore};
-use protocol::{ContextQuery, Method, ProtocolStore, UtilityRequest};
+use protocol::{ContextQuery, LearningWrite, Method, ProtocolStore, UtilityRequest};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -23,6 +23,11 @@ pub async fn request(
                 .ok_or(history::Error::Invalid("Input must be 1–65536 bytes"))?;
             return Ok(json!({"inputHash":ContentId::hash(text.as_bytes()),"bytes":text.len()}));
         }
+        if method == Method::ContextSaveLearning {
+            let request: LearningWrite = serde_json::from_value(params)
+                .map_err(|_| history::Error::Invalid("Invalid learning request"))?;
+            return runtime::context_bridge::save_learning(&store, &request, &cancel);
+        }
         if matches!(
             method,
             Method::ContextPreview
@@ -30,17 +35,40 @@ pub async fn request(
                 | Method::ContextSearch
                 | Method::ContextSymbol
                 | Method::ContextFreshness
+                | Method::ContextFind
+                | Method::ContextFindAll
+                | Method::ContextFile
+                | Method::ContextFileApi
+                | Method::ContextTrace
+                | Method::ContextMap
+                | Method::ContextGraph
+                | Method::ContextCheck
+                | Method::ContextLearnings
+                | Method::ContextReview
+                | Method::ContextBranches
         ) {
             let query: ContextQuery = serde_json::from_value(params)
                 .map_err(|_| history::Error::Invalid("Invalid context request"))?;
             let name = match method {
                 Method::ContextPreview => "prompt_context",
+                Method::ContextFind => "find_code",
+                Method::ContextFindAll => "find_all",
+                Method::ContextFile => "get_file",
+                Method::ContextFileApi => "file_api",
+                Method::ContextTrace => "trace_calls",
+                Method::ContextMap => "repo_map",
+                Method::ContextGraph => "get_graph",
+                Method::ContextCheck => "check_index",
+                Method::ContextLearnings => "list_learnings",
+                Method::ContextReview => "review_learnings",
+                Method::ContextBranches => "branch_overlap",
+
                 Method::ContextSearch => "search_symbols",
                 Method::ContextSymbol => "get_symbol_context",
                 Method::ContextFreshness => "check_context_freshness",
                 _ => "repo_overview",
             };
-            return runtime::context_bridge::query(&store, name, &query, &cancel);
+            return runtime::context_bridge::project_query(&store, name, &query, &cancel);
         }
         let snapshot = store.snapshot()?;
         let root = std::path::Path::new(
