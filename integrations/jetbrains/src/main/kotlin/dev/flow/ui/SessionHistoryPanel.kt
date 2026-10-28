@@ -7,6 +7,7 @@ import com.intellij.diff.DiffDialogHints
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.diff.util.DiffUserDataKeys
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -16,7 +17,6 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
-import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.treeStructure.Tree
 import dev.flow.bridge.AgentProtocol
@@ -34,7 +34,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.BorderLayout
-import java.awt.GridLayout
 import java.awt.event.ActionEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -46,7 +45,6 @@ import javax.swing.AbstractAction
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
@@ -61,6 +59,7 @@ internal class SessionHistoryPanel(
     private val historyRequest: suspend (String, JsonObject) -> JsonElement = controller::historyRequest,
     private val presentDiff: (SimpleDiffRequest) -> Unit = { request -> DiffManager.getInstance().showDiff(project, request, DiffDialogHints.DEFAULT) },
     private val reviewSession: (String) -> Unit = {},
+    private val openConversation: (String) -> Unit = {},
     private val newConversation: (String) -> Unit,
 ) : JBPanel<SessionHistoryPanel>(BorderLayout()),
     Disposable {
@@ -89,24 +88,36 @@ internal class SessionHistoryPanel(
         lineWrap = true
         wrapStyleWord = true
         isOpaque = false
+        font = javax.swing.UIManager.getFont("Label.font")
+        (caret as javax.swing.text.DefaultCaret).updatePolicy = javax.swing.text.DefaultCaret.NEVER_UPDATE
     }
     private val message = note(3)
     private val coverage = note(2)
-    private val refresh = JButton("Refresh sessions")
-    private val moreSessions = JButton("Next sessions")
-    private val firstTurns = JButton("First turns")
-    private val moreTurns = JButton("Next turns")
-    private val allOperations = JButton("All operations")
-    private val firstOperations = JButton("First operations")
-    private val moreOperations = JButton("Next operations")
-    private val firstFiles = JButton("First files")
-    private val moreFiles = JButton("Next files")
-    private val archive = JButton("Archive")
-    private val continueSession = JButton("New conversation…")
-    private val reviewResult = JButton("Review complete result")
-    private val diff = JButton("Open historical diff")
-    private val currentFile = JButton("Open CURRENT workspace file")
+    private val refresh = JButton("Refresh sessions", AllIcons.Actions.Refresh)
+    private val moreSessions = JButton("Next sessions", AllIcons.Actions.Forward)
+    private val firstTurns = JButton("First turns", AllIcons.Actions.Back)
+    private val moreTurns = JButton("Next turns", AllIcons.Actions.Forward)
+    private val allOperations = JButton("All operations", AllIcons.Actions.ListChanges)
+    private val firstOperations = JButton("First operations", AllIcons.Actions.Back)
+    private val moreOperations = JButton("Next operations", AllIcons.Actions.Forward)
+    private val firstFiles = JButton("First files", AllIcons.Actions.Back)
+    private val moreFiles = JButton("Next files", AllIcons.Actions.Forward)
+    private val archive = JButton("Archive", AllIcons.Nodes.Folder)
+    private val continueSession = JButton("New conversation…", AllIcons.General.Add)
+    private val reviewResult = JButton("Review result", AllIcons.Actions.ListChanges)
+    private val readConversation = JButton("Read conversation", AllIcons.General.Balloon)
+    private val search = com.intellij.ui.components.JBTextField().apply {
+        emptyText.text = "Search titles and conversation text"
+        accessibleContext.accessibleName = "Search session history"
+    }
+    private val favoritesOnly = javax.swing.JCheckBox("Favorites only")
+    private val favorite = JButton("Favorite", AllIcons.Nodes.Favorite)
+    private val rename = JButton("Rename…", AllIcons.Actions.Edit)
+    private val diff = JButton("Open historical diff", AllIcons.Actions.Diff)
+    private val currentFile = JButton("Open current file", AllIcons.Actions.EditSource)
     private var sessionCursor: String? = null
+    private var submittedSearch: Pair<String, Boolean>? = null
+    private lateinit var historyScroll: com.intellij.ui.components.JBScrollPane
     private var turnCursor: String? = null
     private var operationCursor: String? = null
     private var fileCursor: String? = null
@@ -120,28 +131,71 @@ internal class SessionHistoryPanel(
     private var selectedOperationId: String? = null
 
     init {
-        fun section(title: String, component: JComponent, vararg controls: JButton) = JPanel(BorderLayout()).apply {
-            add(JBLabel(title).apply { labelFor = component }, BorderLayout.NORTH)
-            add(JBScrollPane(component), BorderLayout.CENTER)
-            add(JPanel(GridLayout(0, 2, 4, 4)).apply { controls.forEach { add(it) } }, BorderLayout.SOUTH)
-        }
-        add(
-            JPanel(GridLayout(4, 1, 0, 6)).apply {
-                add(section("Sessions", sessions, refresh, moreSessions, archive, continueSession, reviewResult))
-                add(section("Turns (creation order)", turns, firstTurns, moreTurns, allOperations))
-                add(section("Operations (observation order)", operations, firstOperations, moreOperations))
-                add(section("Recorded files — folders group this page", files, firstFiles, moreFiles, diff, currentFile))
+        border = com.intellij.util.ui.JBUI.Borders.empty(8)
+        fun section(title: String, component: JComponent, height: Int, vararg controls: JButton) = FlowUi.column(
+            JBLabel(title).apply {
+                labelFor = component
+                font = font.deriveFont(java.awt.Font.BOLD)
             },
+            FlowUi.scroll(component, height),
+            FlowUi.actions(*controls),
+        )
+        sessions.visibleRowCount = 4
+        turns.visibleRowCount = 3
+        operations.visibleRowCount = 4
+        add(
+            FlowUi.scroll(
+                FlowUi.column(
+                    FlowUi.heading("Session history", "Browse recorded work and compare exact file versions."),
+                    search,
+                    FlowUi.actions(JButton("Search", AllIcons.Actions.Search).apply { addActionListener { loadSessions(null) } }, favoritesOnly),
+                    section("Sessions", sessions, 125, refresh, moreSessions),
+                    FlowUi.actions(readConversation, favorite, rename),
+                    FlowUi.actions(FlowUi.primary(reviewResult), continueSession, archive),
+                    Disclosure("Filter by turn", section("Turns", turns, 90, firstTurns, moreTurns, allOperations)),
+                    section("Operations", operations, 125, firstOperations, moreOperations),
+                    section("Recorded files", files, 160, firstFiles, moreFiles),
+                    FlowUi.actions(FlowUi.primary(diff), currentFile),
+                    coverage, message,
+                ),
+            ).also { historyScroll = it },
             BorderLayout.CENTER,
         )
-        add(
-            JPanel(BorderLayout()).apply {
-                add(JBScrollPane(coverage), BorderLayout.NORTH)
-                add(JBScrollPane(message), BorderLayout.CENTER)
-            },
-            BorderLayout.SOUTH,
-        )
         refresh.addActionListener { loadSessions(null) }
+        search.addActionListener { loadSessions(null) }
+        favoritesOnly.addActionListener { loadSessions(null) }
+        readConversation.addActionListener { sessions.selectedValue?.let { openConversation(it.value["id"].asString) } }
+        favorite.addActionListener {
+            val selected = sessions.selectedValue?.value ?: return@addActionListener
+            runRequest(0) {
+                historyRequest(
+                    "sessions.label",
+                    AgentProtocol.command(selected["id"].asString).apply {
+                        remove("prompt")
+                        addProperty("favorite", selected["favorite"]?.asBoolean != true)
+                    },
+                )
+                loadSessions(null)
+            }
+        }
+        rename.addActionListener {
+            val selected = sessions.selectedValue?.value ?: return@addActionListener
+            val title = com.intellij.openapi.ui.Messages.showInputDialog(project, "Conversation title (up to 120 characters; empty resets it)", "Rename conversation", null, selected.optionalText("title").orEmpty(), null) ?: return@addActionListener
+            if (title.codePointCount(0, title.length) > 120 || title.any(Char::isISOControl)) {
+                message.text = "Use at most 120 characters without control characters."
+                return@addActionListener
+            }
+            runRequest(0) {
+                historyRequest(
+                    "sessions.label",
+                    JsonObject().apply {
+                        addProperty("sessionId", selected["id"].asString)
+                        addProperty("title", title)
+                    },
+                )
+                loadSessions(null)
+            }
+        }
         moreSessions.addActionListener { sessionCursor?.let(::loadSessions) }
         firstTurns.addActionListener { loadTurns(null) }
         moreTurns.addActionListener { turnCursor?.let(::loadTurns) }
@@ -231,6 +285,7 @@ internal class SessionHistoryPanel(
                 throw cancelled
             } catch (_: Exception) {
                 if (tasks[level] == coroutineContext[Job]) message.text = "History unavailable, content missing/corrupt, or selection changed. No live content was substituted. Refresh and retry; close/recover sessions before archiving."
+                if (level == 0) resetScrollTop()
             }
         }
         tasks[level]!!.start()
@@ -289,9 +344,12 @@ internal class SessionHistoryPanel(
     private fun gap(page: JsonObject) {
         coverage.text = if (page["captureGap"]?.asBoolean == true) "Capture gaps were reported. Later checkpoints do not reconstruct unobserved writes; inspect recorded intervals before review." else "History contains observed checkpoints. Independent reversibility and writer shutdown are not implied."
     }
-    private fun time(row: JsonObject, field: String) = runCatching { Instant.ofEpochMilli(row[field].asString.toLong()).toString() }.getOrDefault("Unknown time")
+    private fun time(row: JsonObject, field: String) = runCatching { java.time.format.DateTimeFormatter.ofPattern("dd MMM, HH:mm").withZone(java.time.ZoneId.systemDefault()).format(Instant.ofEpochMilli(row[field].asString.toLong())) }.getOrDefault("Unknown time")
     private fun loadSessions(after: String?) {
         if (!connected) return
+        val filter = search.text.trim() to favoritesOnly.isSelected
+        val cursor = after.takeIf { filter == submittedSearch }
+        submittedSearch = filter
         cancelFrom(0)
         replaceRows(sessions, emptyArray())
         replaceRows(turns, emptyArray())
@@ -301,12 +359,32 @@ internal class SessionHistoryPanel(
         coverage.text = ""
         buttons()
         runRequest(0) {
-            val page = historyRequest("sessions.list", JsonObject().apply { after?.let { addProperty("after", it) } }).asJsonObject
+            require(filter.first.codePointCount(0, filter.first.length) <= 256) { "Search is limited to 256 characters." }
+            val page = historyRequest(
+                "sessions.search",
+                JsonObject().apply {
+                    cursor?.let { addProperty("after", it) }
+                    addProperty("query", filter.first)
+                    addProperty("favoritesOnly", filter.second)
+                },
+            ).asJsonObject
             sessionCursor = page.optionalText("next")
-            replaceRows(sessions, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString}" })
+            replaceRows(sessions, rows(page) { "${if (it["favorite"]?.asBoolean == true) "★ " else ""}${it.optionalText("title").orEmpty().ifBlank { it["id"].asString.takeLast(6) }} — ${it["status"].asString} — ${time(it, "createdAtMs")}" })
             message.text = "Select a session. History never resumes an agent. Next replaces this page; Refresh returns to the first page."
             buttons()
+            resetScrollTop()
         }
+    }
+    private fun resetScrollTop() {
+        // A replaced list/status document can ask its scroll parent to reveal
+        // the caret/first row. Fresh session pages should open at their heading.
+        javax.swing.SwingUtilities.invokeLater {
+            if (scope.coroutineContext[Job]?.isActive == true && selectedSessionId == null) historyScroll.verticalScrollBar.value = 0
+        }
+    }
+    fun refreshSessions() {
+        loadSessions(null)
+        resetScrollTop()
     }
     private fun loadTurns(after: String?) {
         cancelFrom(1)
@@ -321,7 +399,7 @@ internal class SessionHistoryPanel(
             val page = historyRequest("history.turns", query).asJsonObject
             turnCursor = page.optionalText("next")
             gap(page)
-            replaceRows(turns, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString}" })
+            replaceRows(turns, rows(page) { "${it["status"].asString} — ${time(it, "createdAtMs")} — ${it["id"].asString.takeLast(6)}" })
             message.text = "Select a turn, or All operations to review the session's complete observation sequence."
             buttons()
         }
@@ -339,7 +417,7 @@ internal class SessionHistoryPanel(
             replaceRows(
                 operations,
                 rows(page) {
-                    "${if (it["complete"].asBoolean) "" else "INCOMPLETE — "}${it["status"].asString} / ${it["attribution"].asString} — ${time(it, "completedAtMs")} — ${it["id"].asString}"
+                    "${if (it["complete"].asBoolean) "" else "INCOMPLETE — "}${it["status"].asString} / ${it["attribution"].asString} — ${time(it, "completedAtMs")} — ${it["id"].asString.takeLast(6)}"
                 },
             )
             message.text = "Select an observation to inspect its files. Status and attribution describe what was recorded, not whether it can be applied independently."
@@ -422,6 +500,10 @@ internal class SessionHistoryPanel(
         val session = connected && sessions.selectedValue != null
         val operation = session && operations.selectedValue != null
         refresh.isEnabled = connected
+        readConversation.isEnabled = session
+        favorite.isEnabled = session
+        favorite.text = if (sessions.selectedValue?.value?.get("favorite")?.asBoolean == true) "Unfavorite" else "Favorite"
+        rename.isEnabled = session
         moreSessions.isEnabled = connected && sessionCursor != null
         firstTurns.isEnabled = session
         moreTurns.isEnabled = session && turnCursor != null

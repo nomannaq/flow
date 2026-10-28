@@ -1,10 +1,105 @@
-//! Bounded immutable review queries. Only history.location consults live paths.
+//! Bounded recorded-state queries and explicit host-selected attachment imports.
 use history::{FileEntry, HistoryStore};
 use protocol::{AgentCommand, HistoryContentIds, HistoryQuery, Method, SessionList};
 use serde_json::{Value, json};
 
 const PAGE: u16 = 20;
 pub fn request(store: HistoryStore, method: Method, params: Value) -> history::Result<Value> {
+    if matches!(method, Method::HistoryChanges | Method::HistoryChangeDiff) {
+        let query: protocol::SessionChangesQuery = decode(params)?;
+        if (method == Method::HistoryChangeDiff || query.after.is_some())
+            && query.snapshot_id.is_none()
+        {
+            return Err(history::Error::Invalid("select an immutable checkpoint"));
+        }
+        let selected = query
+            .snapshot_id
+            .map(history::ContentId::try_from)
+            .transpose()
+            .map_err(|_| history::Error::Invalid("invalid snapshot"))?;
+        let (before, after, files) = store.session_changes(query.session_id.clone(), selected)?;
+        if method == Method::HistoryChanges {
+            let start = query
+                .after
+                .as_deref()
+                .unwrap_or("0")
+                .parse::<usize>()
+                .map_err(|_| history::Error::InvalidCursor)?;
+            if start > files.len() {
+                return Err(history::Error::InvalidCursor);
+            }
+            let end = start.saturating_add(PAGE as usize).min(files.len());
+            let items:Vec<_>=files[start..end].iter().enumerate().map(|(index,file)| json!({"index":start+index,"oldPath":file.old_path,"newPath":file.new_path,"kind":change_kind(file),"contentIds":content_ids(file)})).collect();
+            return Ok(
+                json!({"sessionId":query.session_id,"snapshotId":after.id,"baselineId":before.id,"total":files.len(),"items":items,"next":(end<files.len()).then(||end.to_string()),"complete":before.manifest.coverage.complete && after.manifest.coverage.complete,"captureGap":store.capture_gap(query.session_id)?}),
+            );
+        }
+        let file = files
+            .get(query.file_index)
+            .ok_or(history::Error::Invalid("file index out of range"))?;
+        let ids = content_ids(file);
+        if query.content_ids.as_ref() != Some(&ids) {
+            return Err(history::Error::Conflict);
+        }
+        let (left, left_note) = text(&store, file.before.as_ref())?;
+        let (right, right_note) = text(&store, file.after.as_ref())?;
+        return Ok(
+            json!({"sessionId":query.session_id,"snapshotId":after.id,"fileIndex":query.file_index,"contentIds":ids,"oldPath":file.old_path,"newPath":file.new_path,"before":left,"after":right,"beforeNote":left_note,"afterNote":right_note,"beforeMode":file.before.as_ref().map(|f|f.mode),"afterMode":file.after.as_ref().map(|f|f.mode)}),
+        );
+    }
+    if method == Method::AttachmentImport {
+        let query: protocol::AttachmentImport = decode(params)?;
+        return Ok(json!({"items":runtime::attachments::import(&store,query.paths)?}));
+    }
+    if matches!(method, Method::AttachmentGet | Method::HistoryAttachment) {
+        let reference = if method == Method::HistoryAttachment {
+            let query: protocol::HistoryAttachmentQuery = decode(params)?;
+            store.verify_turn_attachment(
+                query.session_id,
+                query.turn_id,
+                query.attachment.clone(),
+            )?;
+            query.attachment
+        } else {
+            decode::<protocol::AttachmentQuery>(params)?.attachment
+        };
+        let path = runtime::attachments::materialize(&store, &reference)?;
+        return Ok(json!({"attachment":reference,"path":path}));
+    }
+    if method == Method::HistoryImage {
+        return runtime::images::read(store, decode(params)?);
+    }
+    if method == Method::HistoryRewindPreview {
+        let query: HistoryQuery = decode(params)?;
+        let snapshot = store.turn_checkpoint(
+            query.session_id.clone(),
+            query
+                .turn_id
+                .ok_or(history::Error::Invalid("turn required"))?,
+        )?;
+        let source = store.get_session(query.session_id)?;
+        return Ok(
+            json!({"snapshotId":snapshot.id,"files":snapshot.manifest.files.len(),"complete":snapshot.manifest.coverage.complete,"sourceStatus":source.status,"regularFiles":snapshot.manifest.files.values().all(|f| f.kind==history::FileKind::Regular)}),
+        );
+    }
+    if method == Method::QueueList {
+        let query: AgentCommand = decode(params)?;
+        return store.queue_view(query.session_id);
+    }
+    if method == Method::QueueGet {
+        let query: protocol::QueueItemQuery = decode(params)?;
+        return store.queued_prompt(query.session_id, query.id);
+    }
+    if method == Method::SessionSearch {
+        return store.search_sessions(decode(params)?);
+    }
+    if method == Method::SessionLabel {
+        store.label_session(decode(params)?)?;
+        return Ok(Value::Null);
+    }
+    if method == Method::HistoryConversation {
+        return store.conversation(decode(params)?);
+    }
     if method == Method::SessionList {
         let query: SessionList = decode(params)?;
         let page = store.sessions_page(query.after, PAGE)?;
@@ -349,6 +444,38 @@ mod tests {
                 },
             )
             .unwrap();
+        let chat = request(
+            store.clone(),
+            Method::HistoryChanges,
+            json!({"sessionId":session}),
+        )
+        .unwrap();
+        assert_eq!(chat["total"], 23);
+        assert_eq!(chat["items"].as_array().unwrap().len(), 20);
+        let pinned =
+            json!({"sessionId":session,"snapshotId":chat["snapshotId"],"after":chat["next"]});
+        let rest = request(store.clone(), Method::HistoryChanges, pinned.clone()).unwrap();
+        assert_eq!(rest["items"].as_array().unwrap().len(), 3);
+        assert_eq!(rest["snapshotId"], chat["snapshotId"]);
+        let mut unpinned = pinned;
+        unpinned.as_object_mut().unwrap().remove("snapshotId");
+        assert!(request(store.clone(), Method::HistoryChanges, unpinned).is_err());
+        let first = &chat["items"][0];
+        let binary_query = json!({"sessionId":session,"snapshotId":chat["snapshotId"],"fileIndex":first["index"],"contentIds":first["contentIds"]});
+        let binary_chat = request(store.clone(), Method::HistoryChangeDiff, binary_query).unwrap();
+        assert!(binary_chat["after"].is_null());
+        assert!(
+            binary_chat["afterNote"]
+                .as_str()
+                .unwrap()
+                .contains("Binary")
+        );
+        let last = rest["items"].as_array().unwrap().last().unwrap();
+        let large_query = json!({"sessionId":session,"snapshotId":chat["snapshotId"],"fileIndex":last["index"],"contentIds":last["contentIds"]});
+        assert!(
+            request(store.clone(), Method::HistoryChangeDiff, large_query).unwrap()["after"]
+                .is_null()
+        );
         let query = json!({"sessionId":session,"operationId":"operation"});
         let page = request(store.clone(), Method::HistoryFiles, query.clone()).unwrap();
         assert_eq!(page["items"].as_array().unwrap().len(), 20);

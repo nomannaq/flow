@@ -231,7 +231,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             (id,response)
                         }));
                     }
-                    Some(method @ (Method::ContextInitialize | Method::ContextPreview | Method::ContextOverview | Method::ContextSearch | Method::ContextSymbol | Method::ContextFreshness | Method::OverlayPreview | Method::CommitSelection | Method::UtilityPrepare | Method::UtilityGenerate)) => {
+                    Some(method @ (Method::ContextInitialize | Method::ContextPreview | Method::ContextOverview | Method::ContextSearch | Method::ContextSymbol | Method::ContextFreshness | Method::ContextFind | Method::ContextFindAll | Method::ContextFile | Method::ContextFileApi | Method::ContextTrace | Method::ContextMap | Method::ContextGraph | Method::ContextCheck | Method::ContextLearnings | Method::ContextReview | Method::ContextSaveLearning | Method::ContextBranches | Method::OverlayPreview | Method::CommitSelection | Method::UtilityPrepare | Method::UtilityGenerate)) => {
                         let Some(store)=store.clone() else { send(&mut output,failure(error::METHOD_NOT_FOUND)).await?; continue; };
                         let Ok(permit)=productivity_slots.clone().try_acquire_owned() else { send(&mut output,failure(error::BUSY)).await?; continue; };
                         let token=CancellationToken::new(); pending.insert(id.clone(),token.clone());
@@ -244,6 +244,19 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                                 result=timeout(Duration::from_millis(timeout_ms),crate::productivity::request(store,method,request.params,token.clone()))=>result.map_err(|_|error::TIMEOUT),
                             };
                             let response=match result { Ok(value)=>Response::success(id.clone(),epoch,value),Err(code)=>Response::failure(Some(id.clone()),Some(epoch),code) };
+                            (id,response)
+                        }));
+                    }
+                    Some(Method::SessionQueue) => {
+                        let Some(host)=agents.as_ref() else {send(&mut output,failure(error::METHOD_NOT_FOUND)).await?;continue;};
+                        let Ok(params)=serde_json::from_value::<QueueAction>(request.params) else {send(&mut output,failure(error::INVALID_PARAMS)).await?;continue;};
+                        if pending.len()>=MAX_IN_FLIGHT {send(&mut output,failure(error::BUSY)).await?;continue;}
+                        let work=host.queue(params);
+                        let token=CancellationToken::new();pending.insert(id.clone(),token.clone());
+                        let epoch=epoch.clone();
+                        jobs.push(Box::pin(async move {
+                            let result=tokio::select!{_=token.cancelled()=>Err(error::CANCELLED),result=timeout(Duration::from_millis(timeout_ms),work)=>result.map_err(|_|error::TIMEOUT).and_then(|r|r.map_err(|_|error::INVALID_PARAMS))};
+                            let response=match result {Ok(value)=>Response::success(id.clone(),epoch,value),Err(code)=>Response::failure(Some(id.clone()),Some(epoch),code)};
                             (id,response)
                         }));
                     }
@@ -273,7 +286,7 @@ async fn serve_connection<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             Err(()) => send(&mut output, failure(error::INVALID_PARAMS)).await?,
                         }
                     }
-                    Some(method @ (Method::ApplyPlan | Method::ApplyGet | Method::ApplyList | Method::ApplyPreview | Method::ApplyResolve | Method::ApplyBegin | Method::ApplyAuthorize | Method::ApplyReceipt | Method::ApplyFinish | Method::ApplyCancel | Method::ApplyReconcile | Method::ApplyRollback | Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck | Method::SessionList | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
+                    Some(method @ (Method::ApplyPlan | Method::ApplyGet | Method::ApplyList | Method::ApplyPreview | Method::ApplyResolve | Method::ApplyBegin | Method::ApplyAuthorize | Method::ApplyReceipt | Method::ApplyFinish | Method::ApplyCancel | Method::ApplyReconcile | Method::ApplyRollback | Method::CandidatePrepare | Method::CandidateGet | Method::CandidateFiles | Method::CandidateDiff | Method::CandidateDecide | Method::CandidateCheck | Method::SessionList | Method::SessionSearch | Method::SessionLabel | Method::HistoryConversation | Method::HistoryChanges | Method::HistoryChangeDiff | Method::AttachmentImport | Method::AttachmentGet | Method::HistoryAttachment | Method::HistoryImage | Method::HistoryRewindPreview | Method::QueueList | Method::QueueGet | Method::SessionArchive | Method::HistoryTurns | Method::HistoryLocation | Method::HistoryOperations | Method::HistoryFiles | Method::HistoryDiff)) => {
                         let Some(store) = store.clone() else { send(&mut output, failure(error::METHOD_NOT_FOUND)).await?; continue; };
                         if pending.len() >= MAX_IN_FLIGHT { send(&mut output, failure(error::BUSY)).await?; continue; }
                         let token = CancellationToken::new(); pending.insert(id.clone(), token.clone());

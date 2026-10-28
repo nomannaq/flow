@@ -28,6 +28,12 @@ class RequestTracker(val epoch: EngineEpoch) {
         return true
     }
 
+    /** A caller abandoning its wait frees capacity; its ID remains used so a
+     * late response cannot satisfy a different request. */
+    fun abandon(id: RequestId) {
+        deadlines.remove(id)
+    }
+
     fun expire(nowNanos: Long = System.nanoTime()): List<RequestId> {
         val expired = deadlines.filterValues { nowNanos - it >= 0 }.keys.toList()
         expired.forEach { deadlines.remove(it) }

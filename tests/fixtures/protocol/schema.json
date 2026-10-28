@@ -2,13 +2,41 @@
   "$defs": {
     "AgentActivity": {
       "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/AttachmentRef"
+          },
+          "type": "array"
+        },
+        "images": {
+          "items": {
+            "$ref": "#/$defs/ImageRef"
+          },
+          "type": "array"
+        },
         "kind": {
           "type": "string"
         },
         "text": {
           "type": "string"
         },
+        "tool": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentToolCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turnId": {
           "type": [
             "string",
             "null"
@@ -36,10 +64,50 @@
       ],
       "type": "object"
     },
+    "AgentAvailableCommand": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "inputHint": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "inputHint"
+      ],
+      "type": "object"
+    },
     "AgentCommand": {
       "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/AttachmentRef"
+          },
+          "type": "array"
+        },
+        "images": {
+          "items": {
+            "$ref": "#/$defs/PromptImage"
+          },
+          "type": "array"
+        },
+        "includeContext": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "prompt": {
           "default": "",
+          "type": "string"
+        },
+        "promptProvenance": {
           "type": "string"
         },
         "sessionId": {
@@ -48,6 +116,83 @@
       },
       "required": [
         "sessionId"
+      ],
+      "type": "object"
+    },
+    "AgentConfigChoice": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "name",
+        "description",
+        "group"
+      ],
+      "type": "object"
+    },
+    "AgentConfigOption": {
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "currentValue": true,
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/AgentConfigChoice"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "category",
+        "kind",
+        "currentValue",
+        "options"
+      ],
+      "type": "object"
+    },
+    "AgentConfigure": {
+      "additionalProperties": false,
+      "properties": {
+        "configId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "value": true
+      },
+      "required": [
+        "sessionId",
+        "configId",
+        "value"
       ],
       "type": "object"
     },
@@ -77,12 +222,58 @@
       ],
       "type": "object"
     },
+    "AgentPlan": {
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/AgentPlanEntry"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "entries",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "AgentPlanEntry": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "status",
+        "priority"
+      ],
+      "type": "object"
+    },
     "AgentStart": {
       "properties": {
+        "adapterProfile": {
+          "type": "string"
+        },
         "arguments": {
           "default": [],
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/AttachmentRef"
           },
           "type": "array"
         },
@@ -97,12 +288,47 @@
           "default": "",
           "type": "string"
         },
+        "connectOnly": {
+          "description": "Connect and discover configuration without making an inference request.",
+          "type": "boolean"
+        },
         "executable": {
           "description": "Host-selected absolute executable; never read from repository config.",
           "type": "string"
         },
+        "images": {
+          "items": {
+            "$ref": "#/$defs/PromptImage"
+          },
+          "type": "array"
+        },
+        "includeContext": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "overlay": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OverlaySelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "prompt": {
           "type": "string"
+        },
+        "promptProvenance": {
+          "type": "string"
+        },
+        "rewindTurnId": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "sourceSessionId": {
           "anyOf": [
@@ -125,6 +351,129 @@
       ],
       "type": "object"
     },
+    "AgentToolCall": {
+      "description": "Bounded display data reported by an adapter. Optional fields are replacement\npatches; an empty collection clears the previous value. Diffs are not verified history.",
+      "properties": {
+        "diffs": {
+          "items": {
+            "$ref": "#/$defs/AgentToolDiff"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locations": {
+          "items": {
+            "$ref": "#/$defs/AgentToolLocation"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parentToolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentToolDiff": {
+      "properties": {
+        "after": {
+          "type": "string"
+        },
+        "before": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "before",
+        "after"
+      ],
+      "type": "object"
+    },
+    "AgentToolLocation": {
+      "properties": {
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "AgentUsage": {
+      "properties": {
+        "size": {
+          "type": "string"
+        },
+        "used": {
+          "description": "Decimal strings retain the precision of provider u64 counters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "used",
+        "size"
+      ],
+      "type": "object"
+    },
     "AgentView": {
       "properties": {
         "activity": {
@@ -140,8 +489,26 @@
           },
           "type": "array"
         },
+        "availableCommands": {
+          "items": {
+            "$ref": "#/$defs/AgentAvailableCommand"
+          },
+          "type": "array"
+        },
         "capabilities": true,
         "compatibility": {
+          "type": "string"
+        },
+        "configOptions": {
+          "items": {
+            "$ref": "#/$defs/AgentConfigOption"
+          },
+          "type": "array"
+        },
+        "configurationError": {
+          "type": "string"
+        },
+        "connectionStage": {
           "type": "string"
         },
         "permissions": {
@@ -149,6 +516,25 @@
             "$ref": "#/$defs/AgentPermission"
           },
           "type": "array"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queue": {
+          "items": {
+            "$ref": "#/$defs/QueuedPrompt"
+          },
+          "type": "array"
+        },
+        "queuePaused": {
+          "type": "boolean"
         },
         "recordedOperations": {
           "format": "uint64",
@@ -165,13 +551,45 @@
             }
           ]
         },
+        "startupElapsedMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "startupTimingsMs": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
         "status": {
           "type": "string"
+        },
+        "subagents": {
+          "items": {
+            "$ref": "#/$defs/AgentActivity"
+          },
+          "type": "array"
         },
         "upstreamSessionId": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentUsage"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "workspace": {
@@ -284,6 +702,60 @@
       ],
       "type": "object"
     },
+    "AttachmentImport": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "type": "object"
+    },
+    "AttachmentQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "$ref": "#/$defs/AttachmentRef"
+        }
+      },
+      "required": [
+        "attachment"
+      ],
+      "type": "object"
+    },
+    "AttachmentRef": {
+      "additionalProperties": false,
+      "description": "Exact imported file identity, independent of the original source path.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mimeType",
+        "size"
+      ],
+      "type": "object"
+    },
     "CancelParams": {
       "properties": {
         "id": {
@@ -385,6 +857,146 @@
       },
       "required": [
         "candidateId"
+      ],
+      "type": "object"
+    },
+    "ContextQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "byteBudget": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "contentHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depth": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "direction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fixed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "full": {
+          "default": false,
+          "type": "boolean"
+        },
+        "ignoreCase": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "default": "",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Segment-aware relative path prefix, applied before ranking.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tokenBudget": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConversationQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "through": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sessionId"
       ],
       "type": "object"
     },
@@ -507,6 +1119,26 @@
       ],
       "type": "object"
     },
+    "HistoryAttachmentQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "$ref": "#/$defs/AttachmentRef"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "turnId",
+        "attachment"
+      ],
+      "type": "object"
+    },
     "HistoryContentIds": {
       "properties": {
         "after": {
@@ -589,6 +1221,51 @@
           "type": "boolean"
         }
       },
+      "type": "object"
+    },
+    "ImageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "imageId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "turnId",
+        "imageId"
+      ],
+      "type": "object"
+    },
+    "ImageRef": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mimeType",
+        "size"
+      ],
       "type": "object"
     },
     "InitializeParams": {
@@ -690,9 +1367,91 @@
       ],
       "type": "string"
     },
+    "LearningWrite": {
+      "additionalProperties": false,
+      "description": "Explicitly reviewed guidance, stored as an immutable Markdown document.",
+      "properties": {
+        "alwaysFollow": {
+          "default": false,
+          "type": "boolean"
+        },
+        "author": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "private": {
+          "default": false,
+          "type": "boolean"
+        },
+        "replaces": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "touches": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "author"
+      ],
+      "type": "object"
+    },
     "Method": {
       "description": "Known methods are typed internally; envelopes keep an open string so unknown\nfuture methods produce METHOD_NOT_FOUND rather than a JSON parse failure.",
       "enum": [
+        "context.initialize",
+        "context.overview",
+        "context.preview",
+        "context.search",
+        "context.symbol",
+        "context.freshness",
+        "context.find",
+        "context.findAll",
+        "context.file",
+        "context.fileApi",
+        "context.trace",
+        "context.map",
+        "context.graph",
+        "context.check",
+        "context.learnings",
+        "context.review",
+        "context.branches",
+        "context.saveLearning",
+        "overlay.preview",
+        "commit.selection",
+        "utilities.prepare",
+        "utilities.generate",
         "apply.plan",
         "apply.get",
         "apply.list",
@@ -711,15 +1470,29 @@
         "candidates.diff",
         "candidates.decide",
         "candidates.check",
+        "attachments.import",
+        "attachments.get",
+        "history.attachment",
+        "history.changes",
+        "history.changeDiff",
         "history.diff",
         "history.files",
         "history.turns",
         "history.location",
         "history.operations",
+        "history.conversation",
+        "history.image",
+        "history.rewindPreview",
+        "sessions.queue",
+        "queue.list",
+        "queue.get",
+        "sessions.search",
+        "sessions.label",
         "sessions.archive",
         "sessions.list",
         "sessions.baseline",
         "sessions.authenticate",
+        "sessions.configure",
         "sessions.start",
         "sessions.active",
         "sessions.prompt",
@@ -799,6 +1572,42 @@
       ],
       "type": "object"
     },
+    "OverlayFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "description": "Exactly \"index\" or \"disk\". Disk includes the staged layer plus local edits.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "source"
+      ],
+      "type": "object"
+    },
+    "OverlaySelection": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/OverlayFile"
+          },
+          "type": "array"
+        },
+        "fingerprint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fingerprint",
+        "files"
+      ],
+      "type": "object"
+    },
     "PermissionChoice": {
       "properties": {
         "allowOnce": {
@@ -843,6 +1652,116 @@
       "minLength": 1,
       "pattern": "^[A-Za-z0-9._:-]+$",
       "type": "string"
+    },
+    "PromptImage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "mimeType",
+        "data"
+      ],
+      "type": "object"
+    },
+    "QueueAction": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentCommand"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "position": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "action"
+      ],
+      "type": "object"
+    },
+    "QueueItemQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        }
+      },
+      "required": [
+        "sessionId",
+        "id"
+      ],
+      "type": "object"
+    },
+    "QueuedPrompt": {
+      "properties": {
+        "attachmentCount": {
+          "default": 0,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "imageCount": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "preview",
+        "status",
+        "imageCount"
+      ],
+      "type": "object"
     },
     "ReplayPage": {
       "properties": {
@@ -1010,11 +1929,75 @@
       ],
       "type": "object"
     },
+    "SessionChangesQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentIds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryContentIds"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fileIndex": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "snapshotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
     "SessionId": {
       "maxLength": 128,
       "minLength": 1,
       "pattern": "^[A-Za-z0-9._:-]+$",
       "type": "string"
+    },
+    "SessionLabel": {
+      "additionalProperties": false,
+      "properties": {
+        "favorite": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
     },
     "SessionList": {
       "description": "Bounded read queries for retained history. Numeric cursors are decimal strings\nso a JavaScript host never loses a SQLite sequence's precision.",
@@ -1028,6 +2011,30 @@
               "type": "null"
             }
           ]
+        }
+      },
+      "type": "object"
+    },
+    "SessionSearch": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "favoritesOnly": {
+          "default": false,
+          "type": "boolean"
+        },
+        "query": {
+          "default": "",
+          "type": "string"
         }
       },
       "type": "object"
@@ -1051,6 +2058,34 @@
       "pattern": "^[A-Za-z0-9._:-]+$",
       "type": "string"
     },
+    "UtilityRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "apiKey": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "inputHash": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "purpose",
+        "model",
+        "apiKey",
+        "input",
+        "inputHash"
+      ],
+      "type": "object"
+    },
     "WorkspaceId": {
       "maxLength": 128,
       "minLength": 1,
@@ -1066,6 +2101,9 @@
     },
     "agentCommand": {
       "$ref": "#/$defs/AgentCommand"
+    },
+    "agentConfigure": {
+      "$ref": "#/$defs/AgentConfigure"
     },
     "agentStart": {
       "$ref": "#/$defs/AgentStart"
@@ -1085,6 +2123,12 @@
     "applyResolve": {
       "$ref": "#/$defs/ApplyResolve"
     },
+    "attachmentImport": {
+      "$ref": "#/$defs/AttachmentImport"
+    },
+    "attachmentQuery": {
+      "$ref": "#/$defs/AttachmentQuery"
+    },
     "cancelParams": {
       "$ref": "#/$defs/CancelParams"
     },
@@ -1100,6 +2144,12 @@
     "candidateQuery": {
       "$ref": "#/$defs/CandidateQuery"
     },
+    "contextQuery": {
+      "$ref": "#/$defs/ContextQuery"
+    },
+    "conversationQuery": {
+      "$ref": "#/$defs/ConversationQuery"
+    },
     "durableEvent": {
       "$ref": "#/$defs/DurableEvent"
     },
@@ -1109,14 +2159,23 @@
     "healthResult": {
       "$ref": "#/$defs/HealthResult"
     },
+    "historyAttachmentQuery": {
+      "$ref": "#/$defs/HistoryAttachmentQuery"
+    },
     "historyQuery": {
       "$ref": "#/$defs/HistoryQuery"
+    },
+    "imageQuery": {
+      "$ref": "#/$defs/ImageQuery"
     },
     "initializeParams": {
       "$ref": "#/$defs/InitializeParams"
     },
     "initializeResult": {
       "$ref": "#/$defs/InitializeResult"
+    },
+    "learningWrite": {
+      "$ref": "#/$defs/LearningWrite"
     },
     "method": {
       "$ref": "#/$defs/Method"
@@ -1127,8 +2186,17 @@
     "notification": {
       "$ref": "#/$defs/Notification"
     },
+    "overlaySelection": {
+      "$ref": "#/$defs/OverlaySelection"
+    },
     "permissionDecision": {
       "$ref": "#/$defs/PermissionDecision"
+    },
+    "queueAction": {
+      "$ref": "#/$defs/QueueAction"
+    },
+    "queueItemQuery": {
+      "$ref": "#/$defs/QueueItemQuery"
     },
     "replayPage": {
       "$ref": "#/$defs/ReplayPage"
@@ -1142,14 +2210,30 @@
     "response": {
       "$ref": "#/$defs/Response"
     },
+    "sessionChangesQuery": {
+      "$ref": "#/$defs/SessionChangesQuery"
+    },
+    "sessionLabel": {
+      "$ref": "#/$defs/SessionLabel"
+    },
     "sessionList": {
       "$ref": "#/$defs/SessionList"
     },
+    "sessionSearch": {
+      "$ref": "#/$defs/SessionSearch"
+    },
     "snapshot": {
       "$ref": "#/$defs/StateSnapshot"
+    },
+    "utilityRequest": {
+      "$ref": "#/$defs/UtilityRequest"
     }
   },
   "required": [
+    "contextQuery",
+    "learningWrite",
+    "overlaySelection",
+    "utilityRequest",
     "applyPrepare",
     "applyQuery",
     "applyAction",
@@ -1173,10 +2257,21 @@
     "replayPage",
     "mutationReceipt",
     "sessionList",
+    "sessionSearch",
+    "sessionLabel",
+    "conversationQuery",
+    "imageQuery",
+    "attachmentImport",
+    "attachmentQuery",
+    "historyAttachmentQuery",
+    "queueAction",
+    "queueItemQuery",
     "historyQuery",
+    "sessionChangesQuery",
     "agentStart",
     "agentCommand",
     "agentAuthenticate",
+    "agentConfigure",
     "permissionDecision",
     "agentView"
   ],
