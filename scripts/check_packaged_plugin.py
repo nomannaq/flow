@@ -70,10 +70,19 @@ def install(archive, destination, target=None):
     jars = list((root / "lib").glob("*.jar"))
     require(jars, "Plugin JAR missing")
     descriptor = False
+    react_assets = False
     for jar in jars:
         with zipfile.ZipFile(jar) as bundle:
             descriptor |= "META-INF/plugin.xml" in bundle.namelist()
+            if "webview/chat.js" in bundle.namelist():
+                require(len(bundle.read("webview/chat.js")) > 1000, "React bundle is empty")
+                require("webview/chat.css" in bundle.namelist(), "React styles missing")
+                require("webview/THIRD_PARTY_NOTICES.txt" in bundle.namelist(), "Frontend license notices missing")
+                require("prompts/enhance-task.txt" in bundle.namelist(), "Prompt enhancer instructions missing")
+                require("prompts/commit-message.txt" in bundle.namelist(), "Commit message instructions missing")
+                react_assets = True
     require(descriptor, "Plugin descriptor missing")
+    require(react_assets, "Bundled React chat missing")
     if not target.endswith("windows-msvc"):
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     return binary, manifest
@@ -91,6 +100,8 @@ def smoke(archive, session_fixture=False):
         data.mkdir()
         sentinel = project / "sentinel.txt"
         sentinel.write_text("developer content\n")
+        source = project / "lib.rs"
+        source.write_text("pub fn packaged_context_probe() {}\n")
         previous = Path.cwd()
         try:
             os.chdir(project)
@@ -102,14 +113,18 @@ def smoke(archive, session_fixture=False):
                     snapshot = engine.call("state.snapshot")
                     require(snapshot["state"]["sessions"] == 0 and snapshot["state"]["operations"] == 0, "Fresh package smoke must have no agent effects")
                     require(engine.call("sessions.active")["sessionId"] is None, "Smoke must not launch an agent")
+                    context = engine.call("context.initialize")
+                    require(context["files"] == 1 and context["symbols"] == 1, "Bundled engine could not initialize project context")
+                    require("packaged_context_probe" in (project / ".flow/map.md").read_text(), "Bundled context map lacks source symbols")
                 finally:
                     engine.shutdown()
             require(sentinel.read_text() == "developer content\n", "Project content changed")
+            require(source.read_text() == "pub fn packaged_context_probe() {}\n", "Context initialization changed source")
         finally:
             os.chdir(previous)
         evidence = {"target": manifest["target"], "engineVersion": manifest["engineVersion"],
                 "engineSha256": manifest["sha256"], "freshStartup": True, "restart": True,
-                "shutdown": True, "outsideCheckout": True, "pathsWithSpaces": True,
+                "shutdown": True, "outsideCheckout": True, "pathsWithSpaces": True, "projectContextInitialized": True,
                 "signing": manifest["signing"], "nativeIDEInstall": "pending host check"}
         if session_fixture:
             session = {}

@@ -88,6 +88,11 @@ def dependency_inventory(metadata, output, target):
         notices = []
         directory = Path(package["manifest_path"]).parent
         candidates = [p for p in directory.iterdir() if p.name.upper().startswith(("LICENSE", "COPYING", "NOTICE", "UNLICENSE")) and p.is_file()]
+        # Some published crates omit their upstream license file. Reviewed,
+        # version-specific copies keep packaging offline and reproducible.
+        supplemental = ROOT / "third-party" / f"{package['name']}-{package['version']}"
+        if supplemental.is_dir():
+            candidates.extend(p for p in supplemental.iterdir() if p.is_file() and p.name.upper().startswith(("LICENSE", "COPYING", "NOTICE")))
         if package.get("license_file"):
             candidates.append(directory / package["license_file"])
         for source in sorted(set(candidates)):

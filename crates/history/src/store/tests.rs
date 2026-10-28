@@ -34,6 +34,199 @@ fn key(s: &str) -> MutationKey {
 }
 
 #[test]
+fn conversation_pages_search_and_labels_survive_restart_without_resuming() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    fixture.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("conversation-baseline"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    for index in 0..31 {
+        let text = if index == 0 {
+            "literal %_ needle "
+        } else if index == 1 {
+            "across chunks"
+        } else {
+            "δ🦀"
+        };
+        store
+            .agent_event(
+                sid(),
+                None,
+                "running".into(),
+                if index == 0 {
+                    "turn.started"
+                } else {
+                    "message.delta"
+                }
+                .into(),
+                value!({"text":text,"transcriptVersion":1}),
+            )
+            .unwrap();
+    }
+    let query = |after, through| protocol::ConversationQuery {
+        session_id: sid(),
+        after,
+        through,
+    };
+    let first = store.conversation(query(None, None)).unwrap();
+    assert_eq!(first["items"].as_array().unwrap().len(), 20);
+    assert_eq!(first["items"][0]["legacy"], false);
+    store
+        .agent_event(
+            sid(),
+            None,
+            "running".into(),
+            "message.delta".into(),
+            value!({"text":"after watermark","toolCallId":"call-1","tool":{"title":"Read source","kind":"read","status":"completed","output":"retained tool output"}}),
+        )
+        .unwrap();
+    let second = store
+        .conversation(query(
+            first["next"].as_str().map(str::to_owned),
+            first["through"].as_str().map(str::to_owned),
+        ))
+        .unwrap();
+    assert_eq!(second["items"].as_array().unwrap().len(), 11);
+    assert!(second["next"].is_null());
+    assert_eq!(first["through"], second["through"]);
+    assert!(!second.to_string().contains("after watermark"));
+    let newest = store
+        .conversation(query(
+            Some(first["through"].as_str().unwrap().to_owned()),
+            None,
+        ))
+        .unwrap();
+    assert_eq!(newest["items"][0]["tool"]["output"], "retained tool output");
+    assert_eq!(newest["items"][0]["toolCallId"], "call-1");
+    assert!(matches!(
+        store.conversation(query(Some("-1".into()), None)),
+        Err(Error::InvalidCursor)
+    ));
+    assert!(matches!(
+        store.conversation(query(None, Some(i64::MAX.to_string()))),
+        Err(Error::InvalidCursor)
+    ));
+    let search = |query: &str, favorites_only| protocol::SessionSearch {
+        query: query.into(),
+        favorites_only,
+        after: None,
+    };
+    assert_eq!(
+        store
+            .search_sessions(search("needle across chunks", false))
+            .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        store.search_sessions(search("needle", false)).unwrap()["items"][0]["title"],
+        "literal %_ needle"
+    );
+    assert_eq!(
+        store.search_sessions(search("%_", false)).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        store.search_sessions(search("unmatched%_", false)).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    store
+        .label_session(protocol::SessionLabel {
+            session_id: sid(),
+            title: Some("Project review".into()),
+            favorite: Some(true),
+        })
+        .unwrap();
+    store
+        .label_session(protocol::SessionLabel {
+            session_id: sid(),
+            title: Some("Renamed".into()),
+            favorite: None,
+        })
+        .unwrap();
+    assert!(
+        store
+            .label_session(protocol::SessionLabel {
+                session_id: sid(),
+                title: Some("bad\nname".into()),
+                favorite: None
+            })
+            .is_err()
+    );
+    drop(store);
+    let reopened = fixture.open();
+    let found = reopened.search_sessions(search("renamed", true)).unwrap();
+    assert_eq!(found["items"][0]["title"], "Renamed");
+    assert_eq!(found["items"][0]["favorite"], true);
+    let all = reopened.conversation(query(None, None)).unwrap();
+    let tail = reopened
+        .conversation(query(
+            all["next"].as_str().map(str::to_owned),
+            all["through"].as_str().map(str::to_owned),
+        ))
+        .unwrap();
+    assert_eq!(
+        tail["items"].as_array().unwrap().last().unwrap()["legacy"],
+        true
+    );
+    assert!(
+        reopened
+            .conversation(protocol::ConversationQuery {
+                session_id: SessionId::try_from("other-session".to_owned()).unwrap(),
+                after: None,
+                through: None
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn schema_six_migration_preserves_existing_sessions_and_journal() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    fixture.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("migration-baseline"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    store.call(|db| {
+        db.conn.execute_batch("DROP TABLE queue_attachments; DROP TABLE turn_attachments; DROP TABLE attachments; ALTER TABLE deletions DROP COLUMN attachment_files; DROP TABLE turn_images; DROP TABLE turn_checkpoints; DROP TABLE prompt_queue; DROP TABLE queue_policy; DROP TABLE queue_receipts; DROP TABLE session_labels; DROP INDEX events_session_sequence; PRAGMA user_version=5;")?;
+        Ok(())
+    }).unwrap();
+    drop(store);
+    let reopened = fixture.open();
+    let found = reopened
+        .search_sessions(protocol::SessionSearch {
+            query: String::new(),
+            favorites_only: false,
+            after: None,
+        })
+        .unwrap();
+    assert_eq!(found["items"][0]["id"], "session-1");
+    assert_eq!(found["items"][0]["favorite"], false);
+    reopened
+        .label_session(protocol::SessionLabel {
+            session_id: sid(),
+            title: None,
+            favorite: Some(true),
+        })
+        .unwrap();
+}
+
+#[test]
 fn recorder_publication_failure_keeps_last_checkpoint_and_requires_recovery() {
     let fixture = Fixture::new();
     let store = fixture.open();
@@ -556,7 +749,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(store);
     let path = dir.join("history.sqlite3");
     let old = Connection::open(&path).unwrap();
-    old.execute_batch("DROP TABLE apply_journals; DROP TABLE candidate_checks; DROP TABLE candidates; DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
+    old.execute_batch("DROP TABLE queue_attachments; DROP TABLE turn_attachments; DROP TABLE attachments; ALTER TABLE deletions DROP COLUMN attachment_files; DROP TABLE turn_images; DROP TABLE turn_checkpoints; DROP TABLE prompt_queue; DROP TABLE queue_policy; DROP TABLE queue_receipts; DROP TABLE session_labels; DROP TABLE apply_journals; DROP TABLE candidate_checks; DROP TABLE candidates; DROP TABLE events; DROP TABLE mutations; DROP TABLE storage_policy; DROP TABLE history_holds; DROP TABLE deletions; PRAGMA user_version=1;")
         .unwrap();
     old.execute(
         "INSERT INTO workspaces VALUES('legacy','/legacy',?1)",
@@ -595,7 +788,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     drop(store);
     // Upgrade the immediately preceding candidate schema without losing it.
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch("DROP TABLE apply_journals; PRAGMA user_version=4;")
+    conn.execute_batch("DROP TABLE queue_attachments; DROP TABLE turn_attachments; DROP TABLE attachments; ALTER TABLE deletions DROP COLUMN attachment_files; DROP TABLE turn_images; DROP TABLE turn_checkpoints; DROP TABLE prompt_queue; DROP TABLE queue_policy; DROP TABLE queue_receipts; DROP TABLE session_labels; DROP INDEX events_session_sequence; DROP TABLE apply_journals; PRAGMA user_version=4;")
         .unwrap();
     drop(conn);
     let upgraded = f.open();
@@ -605,7 +798,7 @@ fn migrates_with_consistent_backup_and_rejects_newer_schema() {
     assert_eq!(
         conn.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
             .unwrap(),
-        5
+        SCHEMA_VERSION
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM workspaces", [], |r| r
@@ -1430,4 +1623,320 @@ fn b26_sqlite_full_during_apply_keeps_last_durable_journal_and_checkpoint() {
     );
     assert_eq!(recovered.checkpoint(sid()).unwrap().id, baseline);
     assert!(!recovered.storage_report().unwrap().writable);
+}
+
+#[test]
+fn queue_receipts_ordering_restart_and_unknown_outcomes_are_durable() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("q-base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let action = |kind: &str, id: Option<&str>, position: Option<u16>| protocol::QueueAction {
+        session_id: sid(),
+        action: kind.into(),
+        id: id.map(str::to_owned),
+        position,
+        command: if kind == "enqueue" {
+            Some(
+                serde_json::from_value(
+                    value!({"sessionId":sid(),"prompt":format!("prompt {}",id.unwrap())}),
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        },
+    };
+    let first = action("enqueue", Some("q-1"), None);
+    store.mutate_queue(first.clone()).unwrap();
+    store.mutate_queue(first.clone()).unwrap();
+    store
+        .mutate_queue(action("enqueue", Some("q-2"), None))
+        .unwrap();
+    store
+        .mutate_queue(action("move", Some("q-2"), Some(0)))
+        .unwrap();
+    assert_eq!(store.queue_view(sid()).unwrap()["items"][0]["id"], "q-2");
+    let (id, command) = store.claim_queued_prompt(sid()).unwrap().unwrap();
+    assert_eq!(id, "q-2");
+    assert_eq!(command.prompt, "prompt q-2");
+    assert!(store.claim_queued_prompt(sid()).unwrap().is_none());
+    store.finish_queued_prompt(sid(), id, true).unwrap();
+    let (id, _) = store.claim_queued_prompt(sid()).unwrap().unwrap();
+    store.finish_queued_prompt(sid(), id, true).unwrap();
+    // A lost enqueue acknowledgement cannot replay an already consumed prompt.
+    store.mutate_queue(first).unwrap();
+    assert!(
+        store.queue_view(sid()).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    store
+        .mutate_queue(action("enqueue", Some("q-3"), None))
+        .unwrap();
+    store.claim_queued_prompt(sid()).unwrap().unwrap();
+    drop(store);
+    let store = f.open();
+    let view = store.queue_view(sid()).unwrap();
+    assert_eq!(view["paused"], true);
+    assert_eq!(view["items"][0]["status"], "uncertain");
+    assert!(store.mutate_queue(action("resume", None, None)).is_err());
+    assert_eq!(
+        store.queued_prompt(sid(), "q-3".into()).unwrap()["prompt"],
+        "prompt q-3"
+    );
+    assert!(
+        store
+            .queued_prompt(
+                SessionId::try_from("foreign".to_owned()).unwrap(),
+                "q-3".into()
+            )
+            .is_err()
+    );
+    store
+        .mutate_queue(action("remove", Some("q-3"), None))
+        .unwrap();
+    store.mutate_queue(action("resume", None, None)).unwrap();
+}
+
+#[test]
+fn image_blobs_checkpoints_and_retention_preserve_ownership() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("img-base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline.clone());
+    store.save_turn_checkpoint(sid(), "turn-1".into()).unwrap();
+    assert_eq!(
+        store.turn_checkpoint(sid(), "turn-1".into()).unwrap().id,
+        baseline
+    );
+    let image = store
+        .store_images(
+            sid(),
+            "turn-1".into(),
+            vec![AttachmentInput {
+                name: "diagram.png".into(),
+                mime_type: "image/png".into(),
+                bytes: b"image bytes".to_vec(),
+            }],
+        )
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        store
+            .image_bytes(sid(), "turn-1".into(), image.id.clone())
+            .unwrap(),
+        b"image bytes"
+    );
+    assert!(
+        store
+            .image_bytes(
+                SessionId::try_from("foreign".to_owned()).unwrap(),
+                "turn-1".into(),
+                image.id.clone()
+            )
+            .is_err()
+    );
+    drop(store);
+    let store = f.open();
+    assert_eq!(
+        store
+            .image_bytes(sid(), "turn-1".into(), image.id.clone())
+            .unwrap(),
+        b"image bytes"
+    );
+    store
+        .agent_event(
+            sid(),
+            Some("turn-1".into()),
+            "closed".into(),
+            "session.closed".into(),
+            value!({}),
+        )
+        .unwrap();
+    store.delete_closed_session(sid(), ws()).unwrap();
+    assert!(
+        !store
+            .directory()
+            .join("blobs")
+            .join(format!("{}.zst", image.id))
+            .exists()
+    );
+    assert!(store.get_snapshot(baseline).is_ok());
+}
+
+#[test]
+fn session_change_preview_is_cumulative_pinned_and_rejects_unlinked_snapshots() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    fixture.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("chat-base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let mut recorder = Recorder::new(store.clone(), sid()).unwrap();
+    for (bytes, time) in [(b"first".as_slice(), 2), (b"second".as_slice(), 3)] {
+        recorder
+            .observe(
+                capture(bytes, time),
+                Observation {
+                    turn_id: "turn-1".into(),
+                    status: OperationStatus::Completed,
+                    attribution: Attribution::CheckpointInterval,
+                    tool_call_id: None,
+                    evidence: "fixture".into(),
+                },
+            )
+            .unwrap();
+    }
+    let (before, after, files) = store.session_changes(sid(), None).unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].before.as_ref().unwrap().blob,
+        ContentId::hash(b"base")
+    );
+    assert_eq!(
+        files[0].after.as_ref().unwrap().blob,
+        ContentId::hash(b"second")
+    );
+    let pinned = after.id;
+    recorder
+        .observe(
+            capture(b"base", 4),
+            Observation {
+                turn_id: "turn-1".into(),
+                status: OperationStatus::Completed,
+                attribution: Attribution::CheckpointInterval,
+                tool_call_id: None,
+                evidence: "undo".into(),
+            },
+        )
+        .unwrap();
+    assert!(store.session_changes(sid(), None).unwrap().2.is_empty());
+    let (old_before, _, old_files) = store.session_changes(sid(), Some(pinned)).unwrap();
+    assert_eq!(old_before.id, before.id);
+    assert_eq!(
+        old_files[0].after.as_ref().unwrap().blob,
+        ContentId::hash(b"second")
+    );
+    let orphan = snapshot_id(
+        store
+            .publish_snapshot(key("chat-unlinked"), capture(b"orphan", 5))
+            .unwrap(),
+    );
+    assert!(store.session_changes(sid(), Some(orphan)).is_err());
+    assert!(
+        store
+            .session_changes(SessionId::try_from("foreign".to_owned()).unwrap(), None)
+            .is_err()
+    );
+}
+
+#[test]
+fn generic_attachments_are_durable_scoped_queued_and_removed_by_retention() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("files-base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let file = store
+        .import_attachment(AttachmentInput {
+            name: "manual.pdf".into(),
+            mime_type: "application/pdf".into(),
+            bytes: b"%PDF-original".to_vec(),
+        })
+        .unwrap();
+    store
+        .store_attachments(sid(), "turn-1".into(), vec![file.clone()])
+        .unwrap();
+    assert!(
+        store
+            .verify_turn_attachment(sid(), "turn-1".into(), file.clone())
+            .is_ok()
+    );
+    assert!(
+        store
+            .verify_turn_attachment(
+                SessionId::try_from("foreign".to_owned()).unwrap(),
+                "turn-1".into(),
+                file.clone()
+            )
+            .is_err()
+    );
+    let queue=serde_json::from_value(value!({"sessionId":sid(),"action":"enqueue","id":"files-queue","command":{"sessionId":sid(),"prompt":"read PDF","attachments":[file]}})).unwrap();
+    store.mutate_queue(queue).unwrap();
+    assert_eq!(
+        store.queue_view(sid()).unwrap()["items"][0]["attachmentCount"],
+        1
+    );
+    drop(store);
+    let store = f.open();
+    assert_eq!(
+        store.attachment_bytes(file.clone()).unwrap(),
+        b"%PDF-original"
+    );
+    let blob = ContentId::hash(b"%PDF-original");
+    store
+        .agent_event(
+            sid(),
+            None,
+            "closed".into(),
+            "session.closed".into(),
+            value!({}),
+        )
+        .unwrap();
+    store.delete_closed_session(sid(), ws()).unwrap();
+    assert!(store.attachment_bytes(file).is_err());
+    assert!(
+        !store
+            .directory()
+            .join("blobs")
+            .join(format!("{}.zst", blob.as_str()))
+            .exists()
+    );
+}
+
+#[test]
+fn unclaimed_attachment_drafts_expire_without_removing_queued_files() {
+    let f = Fixture::new();
+    let store = f.open();
+    f.register(&store);
+    let baseline = snapshot_id(
+        store
+            .publish_snapshot(key("draft-base"), capture(b"base", 1))
+            .unwrap(),
+    );
+    make_session(&store, baseline);
+    let file = |name: &str| AttachmentInput {
+        name: name.into(),
+        mime_type: "text/plain".into(),
+        bytes: name.as_bytes().to_vec(),
+    };
+    let stale = store.import_attachment(file("stale.txt")).unwrap();
+    let held = store.import_attachment(file("held.txt")).unwrap();
+    store.mutate_queue(serde_json::from_value(value!({"sessionId":sid(),"action":"enqueue","id":"held-file","command":{"sessionId":sid(),"prompt":"read","attachments":[held]}})).unwrap()).unwrap();
+    Connection::open(store.directory().join("history.sqlite3"))
+        .unwrap()
+        .execute("UPDATE attachments SET created_at_ms=0", [])
+        .unwrap();
+    store.import_attachment(file("new.txt")).unwrap();
+    assert!(store.attachment_bytes(stale).is_err());
+    assert_eq!(store.attachment_bytes(held).unwrap(), b"held.txt");
 }

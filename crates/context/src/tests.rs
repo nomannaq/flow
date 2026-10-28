@@ -209,7 +209,7 @@ fn initializer_rejects_redirected_directories_and_files() {
     assert!(initialize(&store, &root, &CancellationToken::new()).is_err());
     assert_eq!(fs::read_to_string(target).unwrap(), "keep");
 }
-fn fixture() -> (tempfile::TempDir, std::path::PathBuf, HistoryStore) {
+pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, HistoryStore) {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("repo");
     let data = temp.path().join("data");
@@ -266,6 +266,7 @@ fn isolation_incremental_ranges_fts_and_budgets() {
     assert_eq!(fresh["freshness"], "stale");
     assert_ne!(fresh["generation"], result["generation"]);
     fs::remove_file(root.join("lib.rs")).unwrap();
+    fs::remove_file(root.join("other.py")).unwrap();
     assert!(
         query(
             &store,

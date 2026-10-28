@@ -21,11 +21,14 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: u32 = 5;
+const SCHEMA_VERSION: u32 = 8;
 mod application;
+mod attachments;
 mod candidates;
+mod conversations;
 mod lifecycle;
 mod maintenance;
+mod prompts;
 pub use maintenance::StorageReport;
 const QUEUE_CAPACITY: usize = 4;
 type Job = Box<dyn FnOnce(&mut Database) + Send>;
@@ -979,10 +982,25 @@ impl Database {
             if version < 5 {
                 tx.execute_batch(include_str!("schema-5.sql"))?;
             }
+            if version < 6 {
+                tx.execute_batch(include_str!("schema-6.sql"))?;
+            }
+            if version < 7 {
+                tx.execute_batch(include_str!("schema-7.sql"))?;
+            }
+            if version < 8 {
+                tx.execute_batch(include_str!("schema-8.sql"))?;
+            }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             tx.commit()?;
         }
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // A new engine owner never replays an unsent or unknown-outcome task.
+        conn.execute("UPDATE queue_policy SET paused=1", [])?;
+        conn.execute(
+            "UPDATE prompt_queue SET status='uncertain' WHERE status='dispatching'",
+            [],
+        )?;
         // A fresh owner never replays a validation command with an unknown
         // outcome. The next explicit check needs a fresh intent ID.
         conn.execute("UPDATE candidate_checks SET record=json_set(record,'$.status','interrupted') WHERE json_extract(record,'$.status')='running'", [])?;
