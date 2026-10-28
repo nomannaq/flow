@@ -8,6 +8,7 @@ import com.intellij.diff.merge.MergeRequest
 import com.intellij.diff.merge.MergeResult
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.diff.util.DiffUserDataKeys
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.editor.EditorFactory
@@ -46,15 +47,15 @@ internal class ApplicationPanel(
     Disposable {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.EDT)
     private val stopped = JCheckBox("I verified all writers have stopped")
-    private val planButton = JButton("Plan application")
-    private val refresh = JButton("Load application history")
-    private val inspect = JButton("Inspect inputs")
-    private val merge = JButton("Resolve conflict")
-    private val apply = JButton("Apply result")
-    private val cancel = JButton("Cancel application")
-    private val reconcile = JButton("Inspect interrupted writes")
-    private val rollback = JButton("Roll back Flow writes")
-    private val review = JButton("Review candidate")
+    private val planButton = JButton("Plan application", AllIcons.Actions.ListChanges)
+    private val refresh = JButton("Load application history", AllIcons.Vcs.History)
+    private val inspect = JButton("Inspect inputs", AllIcons.Actions.Preview)
+    private val merge = JButton("Resolve conflict", AllIcons.Actions.Diff)
+    private val apply = JButton("Apply result", AllIcons.Actions.Checked)
+    private val cancel = JButton("Cancel application", AllIcons.Actions.Cancel)
+    private val reconcile = JButton("Inspect interrupted writes", AllIcons.Actions.Preview)
+    private val rollback = JButton("Roll back Flow writes", AllIcons.Actions.Rollback)
+    private val review = JButton("Review candidate", AllIcons.Actions.Diff)
     private val summary = JBTextArea(6, 30).apply {
         isEditable = false
         lineWrap = true

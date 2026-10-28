@@ -41,6 +41,33 @@ sourceSets.test {
     resources.srcDir("../../tests/fixtures/protocol")
 }
 
+val installChatDependencies by tasks.registering(Exec::class) {
+    workingDir = file("webview")
+    commandLine(if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")
+    if (gradle.startParameter.isOffline) args("--offline")
+    inputs.files("webview/package.json", "webview/package-lock.json")
+    outputs.dir("webview/node_modules")
+}
+
+val buildReactChat by tasks.registering(Exec::class) {
+    dependsOn(installChatDependencies)
+    workingDir = file("webview")
+    commandLine(if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm", "run", "build")
+    inputs.dir("webview/src")
+    inputs.dir("src/main/resources/icons")
+    inputs.files("webview/package-lock.json", "webview/tsconfig.json", "webview/vite.config.ts", "webview/notices.mjs", "webview/package.json")
+    outputs.dir(layout.buildDirectory.dir("react-chat"))
+}
+
+tasks.processResources {
+    dependsOn(buildReactChat)
+    from(layout.buildDirectory.dir("react-chat")) { into("webview") }
+    from("../../crates/runtime/prompts") {
+        include("*.txt")
+        into("prompts")
+    }
+}
+
 val buildProtocolTestEngine by tasks.registering(Exec::class) {
     group = "verification"
     description = "Build the Rust executable used by the Kotlin IPC contract test."
@@ -83,6 +110,15 @@ val acceptanceEngine = providers.gradleProperty("flowAcceptanceEngine").orNull?.
 
 tasks.test {
     dependsOn(buildProtocolTestEngine)
+    if (providers.gradleProperty("flowPerformance").orNull != "true") filter.excludeTestsMatching("dev.flow.ui.LocalPerformanceTest")
+    if (providers.gradleProperty("flowReactBrowserSmoke").orNull == "true") {
+        filter.includeTestsMatching("dev.flow.ui.ReactBrowserSmokeTest")
+        systemProperty("ide.browser.jcef.headless.enabled", "true")
+        systemProperty("ide.browser.jcef.testMode.enabled", "true")
+        outputs.upToDateWhen { false }
+    } else {
+        filter.excludeTestsMatching("dev.flow.ui.ReactBrowserSmokeTest")
+    }
     // Native executables and external fixtures must invalidate cached test runs.
     inputs.file(acceptanceEngine ?: rootProject.file("../../target/debug/$engineFileName"))
     inputs.dir(layout.buildDirectory.dir("native-engine"))

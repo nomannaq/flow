@@ -6,6 +6,7 @@ import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.diff.util.DiffUserDataKeys
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.project.Project
@@ -43,16 +44,16 @@ internal class CandidateReviewPanel(
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.EDT)
     private val session = JBTextField().apply { accessibleContext.accessibleName = "Candidate source session" }
     private val stopped = JCheckBox("I verified all writers have stopped")
-    private val prepare = JButton("Prepare result")
-    private val refresh = JButton("Refresh result")
-    private val more = JButton("More files")
-    private val open = JButton("Open result diff")
-    private val accept = JButton("Accept result")
-    private val application = JButton("Continue to apply")
-    private val reject = JButton("Reject result")
+    private val prepare = JButton("Prepare result", AllIcons.Actions.ListChanges)
+    private val refresh = JButton("Refresh result", AllIcons.Actions.Refresh)
+    private val more = JButton("More files", AllIcons.General.ArrowDown)
+    private val open = JButton("Open result diff", AllIcons.Actions.Diff)
+    private val accept = JButton("Accept result", AllIcons.Actions.Checked)
+    private val application = JButton("Continue to apply", AllIcons.Actions.Forward)
+    private val reject = JButton("Reject result", AllIcons.Actions.Cancel)
     private val command = JBTextField("[]").apply { accessibleContext.accessibleName = "Explicit candidate check command" }
-    private val runCheck = JButton("Run check (15s)")
-    private val checkedVersion = JButton("Review checked result")
+    private val runCheck = JButton("Run check (15s)", AllIcons.Actions.Execute)
+    private val checkedVersion = JButton("Review checked result", AllIcons.Actions.Preview)
     private val summary = JBTextArea(5, 30).apply {
         isEditable = false
         lineWrap = true
