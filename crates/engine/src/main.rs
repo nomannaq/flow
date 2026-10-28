@@ -1,6 +1,7 @@
 mod candidates;
 mod session_history;
 use tracing_subscriber::EnvFilter;
+mod code_context;
 mod maintenance;
 mod productivity;
 mod rpc;
@@ -14,6 +15,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = runtime::agents::launch(std::env::args_os().skip(2)).await;
         eprintln!("Flow adapter launcher failed");
         std::process::exit(1);
+    }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--context")) {
+        let args = std::env::args_os().skip(2).collect();
+        return tokio::task::spawn_blocking(move || code_context::run(args)).await?;
     }
     tracing_subscriber::fmt()
         .with_env_filter(

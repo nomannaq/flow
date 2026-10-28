@@ -6,9 +6,11 @@
 
 mod agent_config;
 pub mod agents;
+pub mod images;
 pub mod maintenance;
 pub mod recorder;
 pub mod review;
+mod tool_activity;
 pub mod worktrees;
 
 #[cfg(test)]
@@ -21,4 +23,7 @@ pub mod application;
 pub mod local_changes;
 
 pub mod context_bridge;
+mod context_review;
 pub mod utilities;
+
+pub mod attachments;

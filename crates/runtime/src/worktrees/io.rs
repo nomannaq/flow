@@ -190,6 +190,35 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    git_operation(root, args, input, None)
+}
+
+pub(crate) fn git_bounded<I, S>(
+    root: &Path,
+    args: I,
+    deadline: Instant,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<Vec<u8>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    git_operation(root, args, None, Some((deadline, cancel)))
+}
+
+fn git_operation<I, S>(
+    root: &Path,
+    args: I,
+    input: Option<&[u8]>,
+    limit: Option<(Instant, &tokio_util::sync::CancellationToken)>,
+) -> Result<Vec<u8>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    if limit.is_some_and(|(deadline, cancel)| cancel.is_cancelled() || Instant::now() >= deadline) {
+        return Err(Error::Invalid("Git inspection cancelled or timed out"));
+    }
     const MAX_OUTPUT: u64 = 8 * 1024 * 1024;
     let mut stdout = tempfile::tempfile()?;
     let mut stdin = tempfile::tempfile()?;
@@ -250,7 +279,12 @@ where
     );
     let started = Instant::now();
     let status = loop {
-        if stdout.metadata()?.len() > MAX_OUTPUT || started.elapsed() > Duration::from_secs(30) {
+        if stdout.metadata()?.len() > MAX_OUTPUT
+            || started.elapsed() > Duration::from_secs(30)
+            || limit.is_some_and(|(deadline, cancel)| {
+                cancel.is_cancelled() || Instant::now() >= deadline
+            })
+        {
             return Err(Error::Invalid(
                 "Git exceeded time/output limit; inspect retained preparation",
             ));

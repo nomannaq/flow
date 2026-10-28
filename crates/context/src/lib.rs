@@ -1,8 +1,12 @@
-//! Rebuildable Rust syntax facts. No semantic call graph, embeddings or writes
-//! to source files. Explicit initialization exports a local `.flow/` map.
+//! Bounded multilingual code intelligence. Syntax facts, inferred relationships
+//! and reviewed learnings stay local; source text is always untrusted data.
 //! Every query is scoped by the engine's workspace.
+mod graph;
+mod knowledge;
 mod project;
+mod syntax;
 use history::{ContentId, HistoryStore};
+pub use knowledge::{LearningWrite, save_learning};
 pub use project::initialize;
 use protocol::ContextQuery;
 use rusqlite::{Connection, params};
@@ -17,10 +21,20 @@ use std::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub const PARSER_VERSION: &str = "tree-sitter-0.26.13/rust-0.24.2/query-2";
+pub const PARSER_VERSION: &str = "tree-sitter-0.26.13/polyglot-4";
 const MAX_FILE: usize = 512 * 1024;
 const MAX_TOTAL: usize = 8 * 1024 * 1024;
 const MAX_FILES: usize = 1024;
+const MANIFESTS: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "go.mod",
+    "pyproject.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "composer.json",
+];
 type Result<T> = std::result::Result<T, history::Error>;
 fn invalid(message: &'static str) -> history::Error {
     history::Error::Invalid(message)
@@ -37,6 +51,8 @@ pub struct Symbol {
     end_byte: usize,
     parent: Option<String>,
     confidence: String,
+    arity: Option<usize>,
+    exported: Option<bool>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct File {
@@ -45,6 +61,9 @@ struct File {
     hash: String,
     source: String,
     symbols: Vec<Symbol>,
+    language: String,
+    references: Vec<syntax::Reference>,
+    bindings: Vec<syntax::Binding>,
 }
 
 /// Content-addressed facts remain authoritative. Change-time stamps only reuse
@@ -154,88 +173,11 @@ fn source(root: &Path, path: &str) -> Result<String> {
     }
     String::from_utf8(bytes).map_err(|_| invalid("context requires UTF-8"))
 }
-fn extract(text: &str, cancel: &CancellationToken, started: Instant) -> Result<Vec<Symbol>> {
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(&tree_sitter_rust::LANGUAGE.into())
-        .map_err(|_| invalid("Rust grammar mismatch"))?;
-    let mut progress = |_: &tree_sitter::ParseState| {
-        if check(cancel, started).is_err() {
-            std::ops::ControlFlow::Break(())
-        } else {
-            std::ops::ControlFlow::Continue(())
-        }
-    };
-    let tree = parser
-        .parse_with_options(
-            &mut |byte, _| &text.as_bytes()[byte..],
-            None,
-            Some(tree_sitter::ParseOptions::new().progress_callback(&mut progress)),
-        )
-        .ok_or_else(|| invalid("context parsing cancelled"))?;
-    let mut out = Vec::new();
-    let mut stack = vec![(tree.root_node(), None)];
-    while let Some((node, parent)) = stack.pop() {
-        check(cancel, started)?;
-        if out.len() >= 4096 {
-            return Err(invalid("too many symbols in file"));
-        }
-        let mut next_parent = parent.clone();
-        if matches!(
-            node.kind(),
-            "function_item"
-                | "function_signature_item"
-                | "struct_item"
-                | "enum_item"
-                | "trait_item"
-                | "type_item"
-                | "const_item"
-                | "static_item"
-                | "mod_item"
-                | "macro_definition"
-                | "use_declaration"
-                | "impl_item"
-        ) {
-            let name = node
-                .child_by_field_name("name")
-                .or_else(|| node.child_by_field_name("type"))
-                .map(|n| &text[n.byte_range()])
-                .unwrap_or(node.kind());
-            let end = node
-                .child_by_field_name("body")
-                .map(|n| n.start_byte())
-                .unwrap_or(node.end_byte());
-            let signature: String = text[node.start_byte()..end].chars().take(512).collect();
-            out.push(Symbol {
-                name: name.into(),
-                kind: node.kind().into(),
-                signature,
-                start_line: node.start_position().row + 1,
-                end_line: node.end_position().row + 1,
-                start_byte: node.start_byte(),
-                end_byte: node.end_byte(),
-                parent,
-                confidence: if node.has_error() {
-                    "partialSyntax"
-                } else {
-                    "syntaxOnly"
-                }
-                .into(),
-            });
-            next_parent = Some(format!("{}:{}", name, node.start_position().row + 1));
-        }
-        let mut cursor = node.walk();
-        let children: Vec<_> = node.named_children(&mut cursor).collect();
-        for child in children.into_iter().rev() {
-            stack.push((child, next_parent.clone()));
-        }
-    }
-    Ok(out)
-}
 fn schema(db: &Connection) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS generations (workspace TEXT PRIMARY KEY, generation TEXT NOT NULL, parser TEXT NOT NULL, truncated INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS files (workspace TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(workspace,path));
-        CREATE VIRTUAL TABLE IF NOT EXISTS symbols USING fts5(workspace UNINDEXED,path,name,signature,data UNINDEXED, tokenize='unicode61');")?;
+        CREATE VIRTUAL TABLE IF NOT EXISTS symbols USING fts5(workspace UNINDEXED,path,name,signature,data UNINDEXED, tokenize='unicode61');
+        CREATE TABLE IF NOT EXISTS graphs(workspace TEXT PRIMARY KEY,generation TEXT NOT NULL,data TEXT NOT NULL);")?;
     Ok(())
 }
 
@@ -246,6 +188,20 @@ fn walk(root: &Path) -> ignore::Walk {
         .follow_links(false)
         .hidden(true)
         .max_depth(Some(64))
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_some_and(|t| t.is_dir())
+                || ![
+                    "node_modules",
+                    "target",
+                    "build",
+                    "dist",
+                    "vendor",
+                    "__pycache__",
+                ]
+                .contains(&entry.file_name().to_str().unwrap_or(""))
+                    && !entry.path().join(".git").exists()
+        })
         .sort_by_file_path(|a, b| a.cmp(b))
         .build()
 }
@@ -255,6 +211,25 @@ fn identity(workspace: &str, root: &Path) -> String {
         "{workspace}:{}",
         ContentId::hash(root.as_os_str().as_encoded_bytes()).as_str()
     )
+}
+
+fn result_paths(value: &Value, paths: &mut std::collections::BTreeSet<String>) {
+    match value {
+        Value::Object(fields) => {
+            if let Some(path) = fields.get("path").and_then(Value::as_str) {
+                paths.insert(path.into());
+            }
+            for child in fields.values() {
+                result_paths(child, paths);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                result_paths(child, paths);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn query(
@@ -277,10 +252,34 @@ fn query_with_stats(
 ) -> Result<(Value, IndexStats)> {
     let mut stats = IndexStats::default();
     let started = Instant::now();
-    if request.query.len() > 512 || request.path.as_ref().is_some_and(|p| p.len() > 4096) {
+    if request.query.len() > 512
+        || request.path.as_ref().is_some_and(|p| p.len() > 4096)
+        || request.scope.as_ref().is_some_and(|p| p.len() > 4096)
+        || request.pattern.as_ref().is_some_and(|p| p.len() > 512)
+        || request.symbol.as_ref().is_some_and(|p| p.len() > 512)
+    {
         return Err(invalid("context request too large"));
     }
     let root = root.canonicalize()?;
+    if matches!(method, "list_learnings" | "review_learnings") {
+        return knowledge::relevant(
+            store,
+            &root,
+            request,
+            method == "review_learnings",
+            cancel,
+            started,
+        )
+        .map(|v| (v, stats));
+    }
+    let prefix = request.scope.as_deref().unwrap_or("").trim_end_matches('/');
+    if !prefix.is_empty()
+        && Path::new(prefix)
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(invalid("invalid context scope"));
+    }
     let mut db = store.context_database()?;
     schema(&db)?;
     // One transaction publishes both file facts and FTS rows. Readers never see
@@ -306,6 +305,17 @@ fn query_with_stats(
             if let Ok(file) = serde_json::from_str::<File>(&data)
                 && file.source.len() <= MAX_FILE
                 && ContentId::hash(file.source.as_bytes()).as_str() == file.hash
+                && file.symbols.len() <= 4096
+                && file.references.len() <= 8192
+                && file.bindings.len() <= 8192
+                && file.references.iter().all(|r| {
+                    r.start_byte <= file.source.len() && file.source.is_char_boundary(r.start_byte)
+                })
+                && file.bindings.iter().all(|b| {
+                    b.scope_start <= b.start_byte
+                        && b.start_byte <= b.scope_end
+                        && b.scope_end <= file.source.len()
+                })
                 && file.symbols.iter().all(|symbol| {
                     symbol.start_byte <= symbol.end_byte
                         && symbol.end_byte <= file.source.len()
@@ -318,6 +328,7 @@ fn query_with_stats(
         }
     }
     let mut files = BTreeMap::new();
+    let mut scopes = std::collections::BTreeSet::from([String::new()]);
     let mut bytes = 0;
     let mut truncated = false;
     let walker = walk(&root);
@@ -330,9 +341,19 @@ fn query_with_stats(
                 continue;
             }
         };
-        if !entry.file_type().is_some_and(|t| t.is_file())
-            || entry.path().extension().is_none_or(|e| e != "rs")
+        if !entry.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        if MANIFESTS.contains(&entry.file_name().to_str().unwrap_or(""))
+            && let Some(parent) = entry
+                .path()
+                .parent()
+                .and_then(|p| p.strip_prefix(&root).ok())
+                .and_then(Path::to_str)
         {
+            scopes.insert(parent.replace(std::path::MAIN_SEPARATOR, "/"));
+        }
+        if syntax::grammar(entry.path().to_str().unwrap_or("")).is_none() {
             continue;
         }
         if files.len() == MAX_FILES {
@@ -371,18 +392,28 @@ fn query_with_stats(
                 return Err(invalid("context file changed during refresh; retry"));
             }
             let hash = ContentId::hash(text.as_bytes()).as_str().to_owned();
-            let symbols = if let Some(file) = cached.filter(|file| file.hash == hash) {
-                stats.reused_files += 1;
-                file.symbols.clone()
-            } else {
-                stats.parsed_files += 1;
-                extract(&text, cancel, started)?
-            };
+            let (symbols, references, bindings) =
+                if let Some(file) = cached.filter(|file| file.hash == hash) {
+                    stats.reused_files += 1;
+                    (
+                        file.symbols.clone(),
+                        file.references.clone(),
+                        file.bindings.clone(),
+                    )
+                } else if method == "check_index" {
+                    (Vec::new(), Vec::new(), Vec::new())
+                } else {
+                    stats.parsed_files += 1;
+                    syntax::extract(&path, &text, cancel, started)?
+                };
             File {
                 stamp: after,
                 source: text,
                 hash,
                 symbols,
+                references,
+                bindings,
+                language: syntax::grammar(&path).unwrap().name.into(),
             }
         };
         bytes += file.source.len();
@@ -393,10 +424,11 @@ fn query_with_stats(
         files.insert(path.to_owned(), file);
     }
     let fingerprint: Vec<_> = files.iter().map(|(p, f)| (p, &f.hash)).collect();
-    let generation =
-        ContentId::hash(&serde_json::to_vec(&(PARSER_VERSION, &fingerprint, truncated)).unwrap())
-            .as_str()
-            .to_owned();
+    let generation = ContentId::hash(
+        &serde_json::to_vec(&(PARSER_VERSION, &fingerprint, &scopes, truncated)).unwrap(),
+    )
+    .as_str()
+    .to_owned();
     let previous: Option<String> = tx
         .query_row(
             "SELECT generation FROM generations WHERE workspace=?",
@@ -404,6 +436,22 @@ fn query_with_stats(
             |r| r.get(0),
         )
         .ok();
+    if method == "check_index" {
+        let changed: Vec<_> = files
+            .iter()
+            .filter(|(path, file)| old.get(*path).is_none_or(|prior| prior.hash != file.hash))
+            .map(|(path, _)| path.clone())
+            .chain(
+                old.keys()
+                    .filter(|path| !files.contains_key(*path))
+                    .cloned(),
+            )
+            .collect();
+        return Ok((
+            json!({"workspace": workspace,"generation":previous,"currentGeneration":generation,"freshness":if previous.as_ref()==Some(&generation) && old_parser.as_deref()==Some(PARSER_VERSION) && !truncated {"verifiedAtRead"} else {"stale"},"truncated":truncated || changed.len()>100,"changedFiles":changed.into_iter().take(100).collect::<Vec<_>>(),"repaired":false,"results":[]}),
+            stats,
+        ));
+    }
     if old_parser.as_deref() != Some(PARSER_VERSION) {
         tx.execute("DELETE FROM files WHERE workspace=?", [&identity])?;
         tx.execute("DELETE FROM symbols WHERE workspace=?", [&identity])?;
@@ -467,18 +515,27 @@ fn query_with_stats(
     }
     check(cancel, started)?;
     tx.commit()?;
+    let graph = graph::load(
+        &db,
+        &identity,
+        &generation,
+        &files,
+        &scopes,
+        cancel,
+        started,
+    )?;
     let budget = request
         .byte_budget
         .unwrap_or(16384)
         .min(32768)
-        .min(request.token_budget.unwrap_or(8192));
+        .min(request.token_budget.unwrap_or(32768));
     // One byte per token is a conservative upper bound, not an exact tokenizer.
     if budget < 1024 {
         return Err(invalid("context budget must be at least 1024 bytes/tokens"));
     }
     let index_incomplete = truncated;
     let mut rows = Vec::new();
-    let mut remaining = budget - 896;
+    let mut remaining = budget;
     let mut returned = std::collections::BTreeSet::new();
     let mut append = |value: Value| {
         let size = serde_json::to_vec(&value).unwrap().len() + 1;
@@ -486,9 +543,7 @@ fn query_with_stats(
             truncated = true;
         } else {
             remaining -= size;
-            if let Some(path) = value["path"].as_str() {
-                returned.insert(path.to_owned());
-            }
+            result_paths(&value, &mut returned);
             rows.push(value);
         }
     };
@@ -500,7 +555,8 @@ fn query_with_stats(
             .ok_or_else(|| invalid("select a context path"))?;
         let file = files
             .get(path)
-            .ok_or_else(|| invalid("path is excluded or not Rust"))?;
+            .filter(|_| graph::within(path, prefix))
+            .ok_or_else(|| invalid("path is excluded or its language is unsupported"))?;
         stale = request
             .content_hash
             .as_ref()
@@ -529,21 +585,51 @@ fn query_with_stats(
             .map(|s| format!("\"{s}\"*"))
             .collect();
         if !terms.is_empty() {
-            let mut stmt = db.prepare("SELECT path,data FROM symbols WHERE symbols MATCH ? AND workspace=? ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 WHEN lower(path)=lower(?) THEN 1 ELSE 2 END,bm25(symbols),path,name,rowid LIMIT 101")?;
+            let mut stmt = db.prepare("SELECT path,data FROM symbols WHERE symbols MATCH ? AND workspace=? AND (?='' OR path=? OR substr(path,1,length(?)+1)=?||'/') ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 WHEN lower(path)=lower(?) THEN 1 ELSE 2 END,bm25(symbols),path,name,rowid LIMIT 101")?;
             for row in stmt.query_map(
-                params![terms.join(" OR "), identity, request.query, request.query],
+                params![
+                    terms.join(" OR "),
+                    identity,
+                    prefix,
+                    prefix,
+                    prefix,
+                    prefix,
+                    request.query,
+                    request.query
+                ],
                 |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )? {
                 let (path, data) = row?;
+                if !graph::within(&path, prefix) {
+                    continue;
+                }
                 append(
                     json!({"path":path,"contentHash":files[&path].hash,"symbol":serde_json::from_str::<Value>(&data).map_err(|_| invalid("context cache is corrupt"))?}),
                 );
             }
         }
+    } else if graph::METHODS.contains(&method) {
+        let values = graph::query(&graph, &files, method, request, cancel, started)?;
+        let limit = request.limit.unwrap_or(100);
+        let limited = if method == "get_graph" {
+            values.first().is_some_and(|v| v["truncated"] == true)
+        } else {
+            values.len() > limit
+        };
+        for value in values.into_iter().take(if method == "get_graph" {
+            usize::MAX
+        } else {
+            limit
+        }) {
+            append(value);
+        }
+        // Drop the closure's borrow before recording a limit hit.
+        drop(append);
+        truncated |= limited;
     } else if method == "repo_overview" {
-        for (path, file) in &files {
+        for (path, file) in files.iter().filter(|(path, _)| graph::within(path, prefix)) {
             append(
-                json!({"path":path,"contentHash":file.hash,"symbols":file.symbols.len(),"language":"Rust"}),
+                json!({"path":path,"contentHash":file.hash,"symbols":file.symbols.len(),"language":file.language}),
             );
         }
     } else {
@@ -573,11 +659,22 @@ fn query_with_stats(
     }
     if !index_incomplete && !stale {
         let mut visible = std::collections::BTreeSet::new();
+        let mut visible_scopes = std::collections::BTreeSet::from([String::new()]);
         for entry in walk(&root) {
             check(cancel, started)?;
             let entry = entry.map_err(|_| invalid("context inventory changed"))?;
             if entry.file_type().is_some_and(|t| t.is_file())
-                && entry.path().extension().is_some_and(|e| e == "rs")
+                && MANIFESTS.contains(&entry.file_name().to_str().unwrap_or(""))
+                && let Some(parent) = entry
+                    .path()
+                    .parent()
+                    .and_then(|p| p.strip_prefix(&root).ok())
+                    .and_then(Path::to_str)
+            {
+                visible_scopes.insert(parent.replace(std::path::MAIN_SEPARATOR, "/"));
+            }
+            if entry.file_type().is_some_and(|t| t.is_file())
+                && syntax::grammar(entry.path().to_str().unwrap_or("")).is_some()
             {
                 let relative = entry
                     .path()
@@ -593,14 +690,47 @@ fn query_with_stats(
                 visible.insert(relative.to_owned());
             }
         }
-        stale |= visible.len() != files.len();
+        stale |= visible.len() != files.len() || visible_scopes != scopes;
     }
-    let value = json!({"workspace":workspace,"generation":generation,"parser":PARSER_VERSION,"confidence":"syntaxOnly","freshness":if stale {"stale"} else {"verifiedAtRead"},"verification":if cfg!(unix) {"changeTimeInventoryAndResultHashes"} else {"allIndexedContentHashes"},"truncated":truncated,"budgetBytes":budget,"tokenUpperBound":budget,"ranking":"exact symbol/path then FTS5 lexical terms (OR prefixes); no embeddings","results":rows});
+    let mut value = json!({"workspace":workspace,"generation":generation,"parser":PARSER_VERSION,"confidence":"syntaxWithInferredRelationships","freshness":if stale {"stale"} else {"verifiedAtRead"},"verification":if cfg!(unix) {"changeTimeInventoryAndResultHashes"} else {"allIndexedContentHashes"},"truncated":truncated,"budgetBytes":budget,"tokenUpperBound":budget,"ranking":"lexical terms and inferred graph coupling; no embeddings","nodeCount":graph.nodes.len(),"edgeCount":graph.edges.len(),"unresolvedReferences":graph.unresolved,"graphTruncated":graph.truncated,"results":rows});
+    if method == "find_code" {
+        let hints = knowledge::relevant(
+            store,
+            &root,
+            &ContextQuery {
+                query: request.query.clone(),
+                paths: returned.iter().cloned().collect(),
+                byte_budget: Some(2048),
+                limit: Some(5),
+                ..Default::default()
+            },
+            false,
+            cancel,
+            started,
+        );
+        if let Ok(hints) = hints {
+            value["learnings"] = hints;
+        }
+    }
+    // Account for the actual serialized envelope, including escaped source text.
+    // Whole rows are removed; no invalid JSON or misleading partial ranges.
+    while serde_json::to_vec(&value).unwrap().len() > budget {
+        value["truncated"] = json!(true);
+        if value["results"].as_array_mut().unwrap().pop().is_some() {
+            continue;
+        }
+        if value.as_object_mut().unwrap().remove("learnings").is_some() {
+            continue;
+        }
+        break;
+    }
     if serde_json::to_vec(&value).unwrap().len() > budget {
         return Err(invalid("context envelope exceeds budget"));
     }
     Ok((value, stats))
 }
 
+#[cfg(test)]
+mod polyglot_tests;
 #[cfg(test)]
 mod tests;
