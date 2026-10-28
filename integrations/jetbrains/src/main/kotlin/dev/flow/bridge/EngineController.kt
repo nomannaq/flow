@@ -43,7 +43,7 @@ internal class EngineController(
     val scope: CoroutineScope,
     private val projectId: ProjectId,
     private val launchProcess: () -> Process,
-    private val pollMs: Long = 1000,
+    private val pollMs: Long = 150,
     private val retryMs: Long = 250,
 ) {
     private sealed interface Command {
@@ -85,7 +85,7 @@ internal class EngineController(
                                 when (
                                     val command = select<Command?> {
                                         commands.onReceive { it }
-                                        onTimeout(pollMs) { null }
+                                        onTimeout(if (pollMs == 150L && mutableView.value.agent.status !in setOf("running", "starting", "cancelling", "configuring")) 1000L else pollMs) { null }
                                     }
                                 ) {
                                     is Command.Rpc -> {
@@ -114,7 +114,12 @@ internal class EngineController(
                                                 if (loadingBaseline) {
                                                     "Could not read the current commit. Open the Git repository root and run git rev-parse HEAD in its terminal. If it has no commits, create the first commit, then retry. Repository restrictions are documented in the B07 guide."
                                                 } else {
-                                                    "Request rejected. Check the selected commit, adapter settings and current session state."
+                                                    when (command.method) {
+                                                        "sessions.start" -> "Could not start the agent. Check the adapter in Settings and select a valid committed workspace. Your draft is retained."
+                                                        "sessions.prompt" -> "The agent did not accept this message. Wait until it is ready and retry; your draft is retained."
+                                                        "sessions.configure" -> "The adapter rejected this setting. Choose an option from its advertised model and permission controls."
+                                                        else -> "Request rejected. Check the current session and workspace state."
+                                                    }
                                                 },
                                             )
                                         } catch (error: Exception) {
@@ -139,10 +144,10 @@ internal class EngineController(
                                 }
                                 try {
                                     val page = ProtocolJson.replay(connection.request("events.replay", ProtocolJson.replayParams(cursor)).asJsonObject)
-                                    advance(cursor, page)
-                                    // A rejected history write can change storage health without an event.
+                                    cursor = advance(cursor, page)
+                                    // The summary cannot advance past replay entries we have not consumed.
+                                    // A rejected write may change health without adding an event.
                                     snapshot = snapshot(connection)
-                                    cursor = snapshot.first
                                     mutableView.value = mutableView.value.copy(sessions = snapshot.second.sessions, operations = snapshot.second.operations, historyStatus = snapshot.second.historyStatus)
                                 } catch (error: EngineRpcException) {
                                     if (error.code != -32602) throw error
@@ -203,15 +208,32 @@ internal class EngineController(
         }
     }
 
-    suspend fun historyRequest(method: String, params: JsonObject = JsonObject()): JsonElement {
-        require(method in setOf("sessions.list", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff", "candidates.prepare", "candidates.get", "candidates.files", "candidates.diff", "candidates.decide", "candidates.check", "apply.plan", "apply.get", "apply.list", "apply.preview", "apply.resolve", "apply.begin", "apply.authorize", "apply.receipt", "apply.finish", "apply.cancel", "apply.reconcile", "apply.rollback"))
+    suspend fun submitAgent(method: String, params: JsonObject): JsonElement {
+        require(method in setOf("sessions.start", "sessions.prompt", "sessions.queue", "sessions.configure"))
         val reply = CompletableDeferred<JsonElement>()
         check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
-        return reply.await()
+        try {
+            return reply.await()
+        } catch (cancelled: CancellationException) {
+            reply.cancel()
+            throw cancelled
+        }
+    }
+
+    suspend fun historyRequest(method: String, params: JsonObject = JsonObject()): JsonElement {
+        require(method in setOf("attachments.import", "attachments.get", "history.attachment", "sessions.list", "sessions.search", "sessions.label", "history.conversation", "history.changes", "history.changeDiff", "history.image", "history.rewindPreview", "queue.list", "queue.get", "sessions.archive", "history.turns", "history.location", "history.operations", "history.files", "history.diff", "candidates.prepare", "candidates.get", "candidates.files", "candidates.diff", "candidates.decide", "candidates.check", "apply.plan", "apply.get", "apply.list", "apply.preview", "apply.resolve", "apply.begin", "apply.authorize", "apply.receipt", "apply.finish", "apply.cancel", "apply.reconcile", "apply.rollback"))
+        val reply = CompletableDeferred<JsonElement>()
+        check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
+        try {
+            return reply.await()
+        } catch (cancelled: CancellationException) {
+            reply.cancel()
+            throw cancelled
+        }
     }
 
     suspend fun productivityRequest(method: String, params: JsonObject = JsonObject()): JsonObject {
-        require(method in setOf("context.initialize", "context.preview", "context.overview", "context.search", "context.symbol", "context.freshness", "overlay.preview", "commit.selection", "utilities.prepare", "utilities.generate"))
+        require(method in setOf("context.initialize", "context.preview", "context.overview", "context.search", "context.symbol", "context.freshness", "context.find", "context.findAll", "context.file", "context.fileApi", "context.trace", "context.map", "context.graph", "context.check", "context.learnings", "context.review", "context.saveLearning", "context.branches", "overlay.preview", "commit.selection", "utilities.prepare", "utilities.generate"))
         val reply = CompletableDeferred<JsonElement>()
         check(mutableView.value.connected && commands.trySend(Command.Rpc(method, params, reply)).isSuccess) { "Engine unavailable" }
         try {

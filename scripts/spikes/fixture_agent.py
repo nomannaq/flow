@@ -37,6 +37,28 @@ pending_prompt = ""
 authenticated = False
 auth_attempts = 0
 
+configuration = [
+    {"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": "fixture-model", "options": [
+        {"value": "fixture-model", "name": "Fixture model", "description": "Offline model for connection tests"},
+        {"value": "fixture-fast", "name": "Fixture fast", "description": "Alternate offline model"},
+    ]},
+    {"id": "effort", "name": "Effort", "category": "thought_level", "type": "select", "currentValue": "high", "options": [
+        {"value": "low", "name": "Low"}, {"value": "high", "name": "High"},
+    ]},
+    {"id": "speed", "name": "Speed", "type": "select", "currentValue": "standard", "options": [
+        {"value": "standard", "name": "Standard"}, {"value": "fast", "name": "Fast"},
+    ]},
+    {"id": "mode", "name": "Permissions", "category": "mode", "type": "select", "currentValue": "ask", "options": [
+        {"value": "ask", "name": "Ask for approval", "description": "Ask before commands and writes"},
+        {"value": "auto", "name": "Full Auto", "description": "Adapter handles commands and writes automatically"},
+    ]},
+    {"id": "verbose", "name": "Verbose output", "type": "boolean", "currentValue": False},
+]
+if "--collaboration-modes" in sys.argv:
+    configuration.append({"id": "collaboration_mode", "name": "Collaboration mode", "category": "collaboration_mode", "type": "select", "currentValue": "default", "options": [
+        {"value": "default", "name": "Default"}, {"value": "plan", "name": "Plan"},
+    ]})
+
 for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
@@ -51,8 +73,8 @@ for line in sys.stdin:
             time.sleep(180)
         respond(request_id, {
             "protocolVersion": 99 if "--wrong-version" in sys.argv else 1,
-            "agentCapabilities": {},
-            "agentInfo": {"name": "flow-fixture", "version": "1"},
+            "agentCapabilities": {"promptCapabilities": {"image": True,"audio": True,"embeddedContext": True}} if "--attachments" in sys.argv else ({"promptCapabilities": {"image": True}} if "--images" in sys.argv else {}),
+            "agentInfo": {"name": "cursor-agent" if "--cursor" in sys.argv else ("claude-agent-acp" if "--claude" in sys.argv else "flow-fixture"), "version": "1"},
             "authMethods": [{"id": "fixture", "name": "Fixture authentication"}],
         })
     elif method == "authenticate":
@@ -70,10 +92,46 @@ for line in sys.stdin:
         if "--needs-auth" in sys.argv and not authenticated:
             send({"id": request_id, "error": {"code": -32000, "message": "Authentication required"}})
             continue
+        if "--reject-mcp" in sys.argv and message["params"].get("mcpServers"):
+            send({"id": request_id, "error": {"code": -32602, "message": "fixture refuses context attachment"}})
+            continue
+        if "--context-tools" in sys.argv:
+            from context_probe import probe
+            config = message["params"]["mcpServers"][0]
+            proof = probe(config)
+            proof.update(probe(config, wrong_token=True))
+            Path("context-proof.json").write_text(json.dumps(proof))
         workspace = Path(message["params"]["cwd"])
         if not workspace.samefile(Path.cwd()):
             raise RuntimeError("session and process working directories differ")
-        respond(request_id, {"sessionId": "fixture"})
+        if "--conversation-features" in sys.argv:
+            update({"sessionUpdate": "available_commands_update", "availableCommands": [
+                {"name": "review", "description": "Review the current workspace", "input": {"hint": "Optional scope"}},
+                {"name": "compact", "description": "Compact the agent context"},
+            ]})
+        result = {"sessionId": "fixture"}
+        if "--configuration" in sys.argv:
+            result["configOptions"] = configuration
+        if "--legacy-modes" in sys.argv:
+            result["modes"] = {"currentModeId": "ask", "availableModes": [{"id": "ask", "name": "Ask"}, {"id": "plan", "name": "Plan"}]}
+        respond(request_id, result)
+    elif method == "session/set_config_option":
+        if "--drop-config" in sys.argv:
+            os._exit(7)
+        option = next((item for item in configuration if item["id"] == message["params"]["configId"]), None)
+        if option is None or "--reject-config" in sys.argv:
+            send({"id": request_id, "error": {"code": -32602, "message": "Rejected configuration private-fixture-token"}})
+            continue
+        option["currentValue"] = message["params"]["value"]
+        if option["id"] == "model":
+            effort = next(item for item in configuration if item["id"] == "effort")
+            effort["currentValue"] = "low"
+            effort["options"] = [{"value": "low", "name": "Low"}]
+        update({"sessionUpdate": "config_option_update", "configOptions": configuration})
+        respond(request_id, {"configOptions": configuration})
+    elif method == "session/set_mode":
+        update({"sessionUpdate": "current_mode_update", "currentModeId": message["params"]["modeId"]})
+        respond(request_id, {})
     elif method == "session/prompt":
         if "--prompt-error" in sys.argv:
             send({"id": request_id, "error": {
@@ -83,6 +141,33 @@ for line in sys.stdin:
             }})
             continue
         prompt = message["params"]["prompt"][0]["text"]
+        if "--attachments" in sys.argv:
+            (workspace / "attachment-proof.json").write_text(json.dumps(message["params"]["prompt"]))
+        if "--images" in sys.argv:
+            import hashlib
+            import base64
+            received = [{"mimeType": block["mimeType"], "hash": hashlib.sha256(base64.b64decode(block["data"])).hexdigest()} for block in message["params"]["prompt"] if block["type"] == "image"]
+            (workspace / "image-proof.json").write_text(json.dumps(received))
+        if "--configuration" in sys.argv:
+            (workspace / "configuration-proof.json").write_text(json.dumps(configuration))
+        if "--context-tools" in sys.argv:
+            (workspace / "prompt-proof.json").write_text(json.dumps({"text": prompt}))
+        if "--conversation-features" in sys.argv:
+            update({"sessionUpdate": "usage_update", "used": 12345, "size": 200000})
+            update({"sessionUpdate": "plan", "entries": [
+                {"content": "Read the project", "priority": "high", "status": "completed"},
+                {"content": "Review changes", "priority": "medium", "status": "in_progress"},
+            ]})
+        if "--delegation-tools" in sys.argv:
+            delegation = "delegate-" + str(sequence)
+            update({"sessionUpdate": "tool_call", "toolCallId": delegation, "title": "Review the implementation", "kind": "think", "status": "pending", "rawInput": {"subagent_type": "explorer", "description": "Inspect project", "prompt": "Read the source"}, "_meta": {"claudeCode": {"toolName": "Agent"}}})
+            update({"sessionUpdate": "tool_call", "toolCallId": "child-" + str(sequence), "title": "Read source", "kind": "read", "status": "in_progress", "rawInput": {"file_path": "probe.txt"}, "_meta": {"claudeCode": {"toolName": "Read", "parentToolUseId": delegation}}})
+            update({"sessionUpdate": "tool_call_update", "toolCallId": "child-" + str(sequence), "status": "completed", "rawOutput": "Read the fixture source"})
+            update({"sessionUpdate": "tool_call_update", "toolCallId": delegation, "status": "completed", "rawOutput": {"status": "completed", "summary": "Review complete"}})
+        if "--long-response" in sys.argv:
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "line 👩🏽‍💻中\n" * 2000}})
+            respond(request_id, {"stopReason": "end_turn"})
+            continue
         for chunk in ["fixture ", "output"]:
             update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}})
         if "--unreported-write" in sys.argv:
@@ -100,7 +185,7 @@ for line in sys.stdin:
         sequence += 1
         pending_edit = request_id
         pending_prompt = prompt
-        update({"sessionUpdate": "tool_call", "toolCallId": str(sequence), "title": "Fixture edit", "kind": "edit", "status": "pending"})
+        update({"sessionUpdate": "tool_call", "toolCallId": str(sequence), "title": "Fixture edit", "name": "edit_file", "kind": "edit", "status": "pending", "rawInput": {"path": "probe.txt"}, "locations": [{"path": str(workspace / "probe.txt"), "line": 0}]})
         send({"id": "permission", "method": "session/request_permission", "params": {
             "sessionId": "fixture",
             "toolCall": {"toolCallId": str(sequence), "title": "Fixture edit"},
@@ -138,7 +223,7 @@ for line in sys.stdin:
                 send({"id": pending_edit, "error": {"code": -32603, "message": "Fixture failed after second write"}})
                 pending_edit = None
                 continue
-            update({"sessionUpdate": "tool_call_update", "toolCallId": str(sequence), "status": "completed"})
+            update({"sessionUpdate": "tool_call_update", "toolCallId": str(sequence), "status": "completed", "content": [{"type": "content", "content": {"type": "text", "text": "Fixture file updated"}}, {"type": "diff", "path": str(workspace / "probe.txt"), "oldText": "", "newText": value + "\n"}]})
         elif outcome["outcome"] != "cancelled":
             raise RuntimeError("probe must never approve allow_always")
         respond(pending_edit, {"stopReason": "end_turn"})

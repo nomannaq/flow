@@ -68,7 +68,7 @@ class EngineBridgeTest {
             assertEquals(baseline, repeated.baseline)
             assertTrue(repeated.actionError.isEmpty())
             val args = com.google.gson.JsonArray().apply { add(requireNotNull(System.getProperty("flow.test.adapterFixture"))) }
-            controller.agentRequest("sessions.start", AgentProtocol.start(requireNotNull(System.getProperty("flow.test.python")), args.toString(), baseline, "write probe", ""))
+            controller.submitAgent("sessions.start", AgentProtocol.start(requireNotNull(System.getProperty("flow.test.python")), args.toString(), baseline, "write probe", ""))
             val waiting = withTimeout(15000) { controller.view.first { it.agent.permissions.isNotEmpty() } }
             val permission = waiting.agent.permissions.single()
             assertEquals(listOf("once"), permission.options.map { it.first })

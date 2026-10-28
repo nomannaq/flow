@@ -9,6 +9,7 @@ import com.intellij.openapi.application.EDT
 import com.intellij.testFramework.LightPlatformTestCase
 import dev.flow.bridge.EngineController
 import dev.flow.bridge.ProjectId
+import dev.flow.bridge.optionalText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -130,12 +131,17 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                 field(taskPanel, "Advanced adapter arguments").text = JsonArray().apply {
                     if (!real) {
                         add(requireNotNull(System.getProperty("flow.test.adapterFixture")))
+                        if (flag == null) {
+                            add("--configuration")
+                            add("--conversation-features")
+                            add("--delegation-tools")
+                        }
                         flag?.let { add(it) }
                     }
                 }.toString()
-                click(taskPanel, "Use current commit")
             }
-            await("baseline displayed") { field(taskPanel, "Clean baseline commit").text.length == 40 }
+            // The ordinary Send path must resolve the baseline without opening settings.
+            assertTrue(field(taskPanel, "Clean baseline commit").text.isBlank())
             suspend fun submit(first: Boolean) {
                 withContext(Dispatchers.EDT) {
                     field(taskPanel, "Task prompt").text = if (real) {
@@ -145,7 +151,18 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                     } else {
                         "Write second version"
                     }
-                    click(taskPanel, if (first) "Start session" else "Send")
+                    if (!real && flag == null) {
+                        taskPanel.webAction(
+                            JsonObject().apply {
+                                addProperty("action", "send")
+                                addProperty("sessionId", controller.view.value.agent.id.orEmpty())
+                                addProperty("text", field(taskPanel, "Task prompt").text)
+                                addProperty("version", if (first) 1 else 2)
+                            },
+                        )
+                    } else {
+                        click(taskPanel, if (first) "Start session" else "Send")
+                    }
                 }
                 if (real) {
                     val answered = mutableSetOf<String>()
@@ -172,7 +189,22 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                     }
                 } else {
                     await("one-time permission") { controller.view.value.agent.permissions.isNotEmpty() && components(taskPanel).filterIsInstance<JButton>().any { it.text == "Once" } }
-                    withContext(Dispatchers.EDT) { click(taskPanel, "Once") }
+                    withContext(Dispatchers.EDT) {
+                        if (flag == null) {
+                            val agent = controller.view.value.agent
+                            val permission = agent.permissions.first()
+                            taskPanel.webAction(
+                                JsonObject().apply {
+                                    addProperty("action", "permission")
+                                    addProperty("sessionId", agent.id)
+                                    addProperty("requestId", permission.id)
+                                    addProperty("option", permission.options.single { it.second == "Once" }.first)
+                                },
+                            )
+                        } else {
+                            click(taskPanel, "Once")
+                        }
+                    }
                 }
             }
             submit(true)
@@ -184,6 +216,52 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
                 withContext(Dispatchers.EDT) { click(taskPanel, "Stop") }
             }
             await("first turn ready") { controller.view.value.agent.status == "ready" }
+            if (!real && flag == null) {
+                withContext(Dispatchers.EDT) {
+                    val cached = taskPanel.webAction(
+                        JsonObject().apply {
+                            addProperty("action", "promptHistory")
+                            addProperty("operation", "list")
+                        },
+                    ).asJsonObject.getAsJsonArray("items")
+                    assertEquals("Only the raw acknowledged user prompt is cached", "Write first version", cached.first().asJsonObject["text"].asString)
+                }
+                for ((configId, chosen) in listOf("effort" to "low", "speed" to "fast", "model" to "fixture-fast")) {
+                    withContext(Dispatchers.EDT) {
+                        val options = controller.view.value.agent.configOptions
+                        taskPanel.webAction(
+                            JsonObject().apply {
+                                addProperty("action", "configure")
+                                addProperty("sessionId", controller.view.value.agent.id)
+                                addProperty("configId", configId)
+                                add("modelValue", options.single { it.id == "model" }.currentValue)
+                                add("currentValue", options.single { it.id == configId }.currentValue)
+                                addProperty("value", chosen)
+                            },
+                        )
+                    }
+                    await("$configId choice confirmed by the ACP agent") {
+                        controller.view.value.agent.let { it.status == "ready" && it.configOptions.single { option -> option.id == configId }.currentValue.asString == chosen }
+                    }
+                }
+                withContext(Dispatchers.EDT) {
+                    val effort = taskPanel.webState().getAsJsonArray("configOptions").single { it.asJsonObject["id"].asString == "effort" }.asJsonObject
+                    assertEquals("Changing model must refresh dependent choices", 1, effort.getAsJsonArray("options").size())
+                    assertEquals("low", effort["currentValue"].asString)
+                }
+                for ((operation, paused) in listOf("pause" to true, "resume" to false)) {
+                    withContext(Dispatchers.EDT) {
+                        taskPanel.webAction(
+                            JsonObject().apply {
+                                addProperty("action", "queue")
+                                addProperty("sessionId", controller.view.value.agent.id)
+                                addProperty("operation", operation)
+                            },
+                        )
+                    }
+                    await("React queue $operation acknowledged by Rust") { controller.view.value.agent.queuePaused == paused }
+                }
+            }
             cancellationStarted?.let { cancellationMs = (System.nanoTime() - it) / 1_000_000.0 }
             if (flag != "--cancel-after-write") {
                 submit(false)
@@ -198,6 +276,45 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             }
             val workspace = Path.of(requireNotNull(controller.view.value.agent.workspace))
             assertEquals(expected.last().second, Files.readString(workspace.resolve(filename)))
+            if (!real && flag == null) {
+                val configuration = com.google.gson.JsonParser.parseString(Files.readString(workspace.resolve("configuration-proof.json"))).asJsonArray
+                assertEquals("The follow-up must use the selected model", "fixture-fast", configuration.single { it.asJsonObject["id"].asString == "model" }.asJsonObject["currentValue"].asString)
+                assertEquals("The follow-up must use the confirmed effort", "low", configuration.single { it.asJsonObject["id"].asString == "effort" }.asJsonObject["currentValue"].asString)
+                assertEquals("The follow-up must use the confirmed speed", "fast", configuration.single { it.asJsonObject["id"].asString == "speed" }.asJsonObject["currentValue"].asString)
+            }
+            if (!real && flag == null) {
+                withContext(Dispatchers.EDT) {
+                    await("Edits summary captured by the native bridge") {
+                        taskPanel.webState().getAsJsonObject("changes")["snapshot"]?.isJsonNull == false
+                    }
+                    val progress = taskPanel.webState().getAsJsonObject("progressPanels")
+                    assertEquals(2, progress.getAsJsonObject("plan").getAsJsonArray("entries").size())
+                    assertTrue(progress.getAsJsonArray("subagents").size() >= 1)
+                    val catalog = taskPanel.webAction(
+                        JsonObject().apply {
+                            addProperty("action", "complete")
+                            addProperty("sessionId", controller.view.value.agent.id)
+                            add("profile", taskPanel.webState()["profile"])
+                            addProperty("trigger", "/")
+                            addProperty("query", "rev")
+                        },
+                    ).asJsonArray
+                    assertEquals("/review ", catalog.single().asJsonObject["insert"].asString)
+                    val changes = taskPanel.webState().getAsJsonObject("changes")
+                    val stats = taskPanel.webAction(
+                        JsonObject().apply {
+                            addProperty("action", "changesStats")
+                            addProperty("sessionId", controller.view.value.agent.id)
+                            add("snapshot", changes["snapshot"])
+                        },
+                    ).asJsonObject
+                    val file = changes.getAsJsonArray("files").single { it.asJsonObject.optionalText("newPath") == filename }.asJsonObject
+                    val count = stats.getAsJsonArray("files").single { it.asJsonObject["index"] == file["index"] }.asJsonObject
+                    assertEquals(1, count["additions"].asInt)
+                    assertEquals("Counts describe the net baseline-to-checkpoint delta", 0, count["deletions"].asInt)
+                    assertFalse(stats.toString().contains("flow-probe"))
+                }
+            }
             val firstReview = review(historyPanel, requests, filename)
             assertEquals(expected, firstReview.map { it.before to it.after })
             if (flag == "--cancel-after-write") assertTrue(firstReview.single().operation.contains("interrupted"))
@@ -205,7 +322,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             assertEquals(before, projectState(repository))
 
             if (controller.view.value.agent.status == "ready") {
-                withContext(Dispatchers.EDT) { click(taskPanel, "Close session") }
+                withContext(Dispatchers.EDT) { closeThroughMenu(taskPanel) }
                 await("session shutdown") { controller.view.value.agent.status in listOf("closed", "failed") }
             }
             if (real) assertEquals("Writer shutdown must be verified", "closed", controller.view.value.agent.status)
@@ -224,6 +341,31 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             assertEquals(firstReview, secondReview)
             assertEquals(before, projectState(repository))
             assertNull(controller.view.value.agent.id) // reading history did not launch an agent
+            val retainedSession = controller.historyRequest("sessions.list").asJsonObject.getAsJsonArray("items").first().asJsonObject["id"].asString
+            controller.historyRequest(
+                "sessions.label",
+                JsonObject().apply {
+                    addProperty("sessionId", retainedSession)
+                    addProperty("title", "Retained test conversation")
+                    addProperty("favorite", true)
+                },
+            )
+            val favorites = controller.historyRequest(
+                "sessions.search",
+                JsonObject().apply {
+                    addProperty("query", "Retained test conversation")
+                    addProperty("favoritesOnly", true)
+                },
+            ).asJsonObject.getAsJsonArray("items")
+            assertEquals(retainedSession, favorites.single().asJsonObject["id"].asString)
+            val transcript = ConversationJournal(retainedSession)
+            do {
+                transcript.append(controller.historyRequest("history.conversation", transcript.params()).asJsonObject)
+            } while (transcript.next != null)
+            assertTrue(transcript.events().any { it.kind == "turn.started" })
+            assertTrue(transcript.export(false).contains("## You"))
+            assertTrue(transcript.export(true).contains("flow.conversation.v1"))
+            assertNull(controller.view.value.agent.id)
             if (real) {
                 realEvidence = JsonObject().apply {
                     addProperty("nativeSwingAcceptancePassed", true)
@@ -259,7 +401,7 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             }
         } finally {
             if (real && mounted && controller.view.value.agent.status !in listOf("closed", "failed", "interrupted")) {
-                withContext(Dispatchers.EDT) { button(taskPanel, "Close session").takeIf { it.isEnabled }?.doClick(0) }
+                withContext(Dispatchers.EDT) { closeThroughMenu(taskPanel) }
                 withTimeoutOrNull(15000) { while (controller.view.value.agent.status !in listOf("closed", "failed", "interrupted")) delay(50) }
             }
             withContext(Dispatchers.EDT) {
@@ -309,9 +451,9 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
         try {
             await("candidate preparation enabled") { button(panel, "Prepare result").isEnabled }
             withContext(Dispatchers.EDT) { click(panel, "Prepare result") }
-            // Full-result review includes the fixture's process diagnostic file;
+            // Full-result review includes process and configuration evidence files;
             // historical probe-only review above deliberately selects one file.
-            await("complete candidate", { "files=${list(panel, "Complete-result files").model.size}; ${field(panel, "Candidate review status").text}" }) { list(panel, "Complete-result files").model.size == 2 && field(panel, "Candidate review status").text.contains("Decision: pending") }
+            await("complete candidate", { "files=${list(panel, "Complete-result files").model.size}; ${field(panel, "Candidate review status").text}" }) { list(panel, "Complete-result files").model.size == 3 && field(panel, "Candidate review status").text.contains("Decision: pending") }
             withContext(Dispatchers.EDT) {
                 val resultFiles = list(panel, "Complete-result files")
                 resultFiles.selectedIndex = (0 until resultFiles.model.size).single { resultFiles.model.getElementAt(it).toString().startsWith("probe.txt —") }
@@ -454,9 +596,21 @@ class FirstVerticalSliceTest : LightPlatformTestCase() {
             throw AssertionError("Timed out waiting for $description. ${withContext(Dispatchers.EDT) { diagnostic() }}", error)
         }
     }
-    private fun components(root: Container): List<Component> = root.components.flatMap { listOf(it) + if (it is Container) components(it) else emptyList() }
+    private fun closeThroughMenu(panel: AgentSessionPanel) {
+        val previous = com.intellij.openapi.ui.TestDialogManager.setTestDialog(com.intellij.openapi.ui.TestDialog.YES)
+        try {
+            panel.composerMenu.components.filterIsInstance<javax.swing.JMenuItem>().single { it.text == "Close session" }.takeIf { it.isEnabled }?.doClick(0)
+        } finally {
+            com.intellij.openapi.ui.TestDialogManager.setTestDialog(previous)
+        }
+    }
+    private fun components(root: Container): List<Component> = root.components.flatMap { listOf(it) + if (it is Container) components(it) else emptyList() } +
+        if (root is ComposerContext) components(root.workspaceSettings) else emptyList()
     private fun field(root: Container, name: String) = components(root).filterIsInstance<JTextComponent>().single { it.accessibleContext.accessibleName == name }
-    private fun button(root: Container, text: String) = components(root).filterIsInstance<JButton>().single { it.text == text || it.accessibleContext.accessibleName == text }
+    private fun button(root: Container, text: String): JButton {
+        val buttons = components(root).filterIsInstance<JButton>()
+        return buttons.singleOrNull { it.accessibleContext.accessibleName == text } ?: buttons.single { it.isVisible && it.text == text }
+    }
     private fun click(root: Container, text: String) {
         val button = button(root, text)
         assertTrue("$text must be enabled", button.isEnabled)
