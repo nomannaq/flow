@@ -1,0 +1,17 @@
+Provider marks are used only to identify their corresponding integrations.
+OpenAI's name and Blossom mark belong to OpenAI. Claude and the Claude Spark
+mark belong to Anthropic. Flow is an independent application.
+
+OpenAI black and white Blossom assets:
+https://openai.com/brand/
+https://cdn.openai.com/brand/openai-logos.zip
+
+Claude Spark (Clay), from Anthropic's official media resources:
+https://www.anthropic.com/news
+https://anthropic.com/press-kit
+
+Original artwork, colors, viewBoxes and clear space are preserved. Only the
+SVG intrinsic width and height are set to 16 logical pixels for native IDE
+controls. No logo is fetched at runtime. sources.json records archive members
+and source/bundled SHA-256 hashes. These marks are not licensed under Flow's
+source-code or dependency licenses and do not imply provider endorsement.
