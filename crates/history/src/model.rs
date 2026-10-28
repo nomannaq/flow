@@ -9,6 +9,12 @@ pub const MAX_CHUNK_BYTES: usize = 64 * 1024;
 pub const MAX_ENTRIES: usize = 4096;
 pub const MAX_PAGE_SIZE: u16 = 100;
 pub(crate) const MAX_METADATA_BYTES: usize = 512 * 1024;
+#[derive(Clone, Debug)]
+pub struct AttachmentInput {
+    pub name: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

@@ -77,6 +77,30 @@ pub enum Method {
     ContextSymbol,
     #[serde(rename = "context.freshness")]
     ContextFreshness,
+    #[serde(rename = "context.find")]
+    ContextFind,
+    #[serde(rename = "context.findAll")]
+    ContextFindAll,
+    #[serde(rename = "context.file")]
+    ContextFile,
+    #[serde(rename = "context.fileApi")]
+    ContextFileApi,
+    #[serde(rename = "context.trace")]
+    ContextTrace,
+    #[serde(rename = "context.map")]
+    ContextMap,
+    #[serde(rename = "context.graph")]
+    ContextGraph,
+    #[serde(rename = "context.check")]
+    ContextCheck,
+    #[serde(rename = "context.learnings")]
+    ContextLearnings,
+    #[serde(rename = "context.review")]
+    ContextReview,
+    #[serde(rename = "context.branches")]
+    ContextBranches,
+    #[serde(rename = "context.saveLearning")]
+    ContextSaveLearning,
     #[serde(rename = "overlay.preview")]
     OverlayPreview,
     #[serde(rename = "commit.selection")]
@@ -123,6 +147,16 @@ pub enum Method {
     CandidateDecide,
     #[serde(rename = "candidates.check")]
     CandidateCheck,
+    #[serde(rename = "attachments.import")]
+    AttachmentImport,
+    #[serde(rename = "attachments.get")]
+    AttachmentGet,
+    #[serde(rename = "history.attachment")]
+    HistoryAttachment,
+    #[serde(rename = "history.changes")]
+    HistoryChanges,
+    #[serde(rename = "history.changeDiff")]
+    HistoryChangeDiff,
     #[serde(rename = "history.diff")]
     HistoryDiff,
     #[serde(rename = "history.files")]
@@ -133,6 +167,22 @@ pub enum Method {
     HistoryLocation,
     #[serde(rename = "history.operations")]
     HistoryOperations,
+    #[serde(rename = "history.conversation")]
+    HistoryConversation,
+    #[serde(rename = "history.image")]
+    HistoryImage,
+    #[serde(rename = "history.rewindPreview")]
+    HistoryRewindPreview,
+    #[serde(rename = "sessions.queue")]
+    SessionQueue,
+    #[serde(rename = "queue.list")]
+    QueueList,
+    #[serde(rename = "queue.get")]
+    QueueGet,
+    #[serde(rename = "sessions.search")]
+    SessionSearch,
+    #[serde(rename = "sessions.label")]
+    SessionLabel,
     #[serde(rename = "sessions.archive")]
     SessionArchive,
     #[serde(rename = "sessions.list")]
@@ -177,6 +227,19 @@ impl Method {
             "context.search" => Some(Self::ContextSearch),
             "context.symbol" => Some(Self::ContextSymbol),
             "context.freshness" => Some(Self::ContextFreshness),
+            "context.find" => Some(Self::ContextFind),
+            "context.findAll" => Some(Self::ContextFindAll),
+            "context.file" => Some(Self::ContextFile),
+            "context.fileApi" => Some(Self::ContextFileApi),
+            "context.trace" => Some(Self::ContextTrace),
+            "context.map" => Some(Self::ContextMap),
+            "context.graph" => Some(Self::ContextGraph),
+            "context.check" => Some(Self::ContextCheck),
+            "context.learnings" => Some(Self::ContextLearnings),
+            "context.review" => Some(Self::ContextReview),
+            "context.branches" => Some(Self::ContextBranches),
+            "context.saveLearning" => Some(Self::ContextSaveLearning),
+
             "overlay.preview" => Some(Self::OverlayPreview),
             "commit.selection" => Some(Self::CommitSelection),
             "utilities.prepare" => Some(Self::UtilityPrepare),
@@ -201,11 +264,24 @@ impl Method {
             "candidates.diff" => Some(Self::CandidateDiff),
             "candidates.decide" => Some(Self::CandidateDecide),
             "candidates.check" => Some(Self::CandidateCheck),
+            "attachments.import" => Some(Self::AttachmentImport),
+            "attachments.get" => Some(Self::AttachmentGet),
+            "history.attachment" => Some(Self::HistoryAttachment),
+            "history.changes" => Some(Self::HistoryChanges),
+            "history.changeDiff" => Some(Self::HistoryChangeDiff),
             "history.diff" => Some(Self::HistoryDiff),
             "history.files" => Some(Self::HistoryFiles),
             "history.turns" => Some(Self::HistoryTurns),
             "history.location" => Some(Self::HistoryLocation),
             "history.operations" => Some(Self::HistoryOperations),
+            "history.conversation" => Some(Self::HistoryConversation),
+            "history.image" => Some(Self::HistoryImage),
+            "history.rewindPreview" => Some(Self::HistoryRewindPreview),
+            "sessions.queue" => Some(Self::SessionQueue),
+            "queue.list" => Some(Self::QueueList),
+            "queue.get" => Some(Self::QueueGet),
+            "sessions.search" => Some(Self::SessionSearch),
+            "sessions.label" => Some(Self::SessionLabel),
             "sessions.archive" => Some(Self::SessionArchive),
             "sessions.list" => Some(Self::SessionList),
             "sessions.baseline" => Some(Self::SessionBaseline),

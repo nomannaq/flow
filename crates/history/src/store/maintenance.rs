@@ -80,14 +80,34 @@ impl Database {
         }
         Ok(())
     }
-    fn finish_deletions(&mut self) -> Result<()> {
+    pub(super) fn finish_deletions(&mut self) -> Result<()> {
         self.require_healthy()?;
         let pending = self
             .conn
-            .prepare("SELECT session_id,blobs FROM deletions WHERE completed=0")?
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .prepare("SELECT session_id,blobs,attachment_files FROM deletions WHERE completed=0")?
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        for (session, raw) in pending {
+        for (session, raw, attachment_files) in pending {
+            let cached: Vec<String> = decode(&attachment_files)?;
+            for id in cached {
+                let reachable: bool = self.conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM attachments WHERE id=?1)",
+                    [&id],
+                    |r| r.get(0),
+                )?;
+                if !reachable {
+                    super::attachments::remove_cache(
+                        &self.blobs.root.parent().unwrap().join("attachment-files"),
+                        &id,
+                    )?;
+                }
+            }
             let candidates: Vec<ContentId> = decode(&raw)?;
             for id in candidates {
                 // A later publication may have reused an object after a crash.
@@ -292,20 +312,27 @@ impl HistoryStore {
             tx.execute("UPDATE events SET session_id=NULL,kind='history.deleted',payload='{}' WHERE session_id=?1", [session.as_str()])?;
             tx.execute("DELETE FROM file_changes WHERE operation_id IN (SELECT id FROM operations WHERE session_id=?1)", [session.as_str()])?;
             tx.execute("DELETE FROM operations WHERE session_id=?1", [session.as_str()])?;
+            let image_candidates=tx.prepare("SELECT blob_id FROM turn_images WHERE turn_id IN (SELECT id FROM turns WHERE session_id=?1)")?.query_map([session.as_str()],|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?;
+            let attachment_candidates=tx.prepare("SELECT DISTINCT a.id,a.blob_id FROM attachments a JOIN turn_attachments t ON t.attachment_id=a.id JOIN turns r ON r.id=t.turn_id WHERE r.session_id=?1")?.query_map([session.as_str()],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
             tx.execute("DELETE FROM turns WHERE session_id=?1", [session.as_str()])?;
             tx.execute("DELETE FROM sessions WHERE id=?1", [session.as_str()])?;
             // Only snapshots belonging to the selected workspace. Keep its exact
             // preparation baseline and any foreign live snapshot references.
-            let candidates = tx.prepare("SELECT DISTINCT blob_id FROM snapshot_blobs WHERE snapshot_id IN (SELECT id FROM snapshots WHERE workspace_id=?1 AND id<>?2)")?
+            let mut candidates = tx.prepare("SELECT DISTINCT blob_id FROM snapshot_blobs WHERE snapshot_id IN (SELECT id FROM snapshots WHERE workspace_id=?1 AND id<>?2)")?
                 .query_map(params![workspace.as_str(), record.baseline.as_str()], |r| r.get::<_,String>(0))?
                 .collect::<std::result::Result<Vec<_>,_>>()?;
             tx.execute("DELETE FROM snapshot_blobs WHERE snapshot_id IN (SELECT id FROM snapshots WHERE workspace_id=?1 AND id<>?2 AND id NOT IN (SELECT baseline FROM sessions) AND id NOT IN (SELECT before_id FROM operations UNION SELECT after_id FROM operations))",params![workspace.as_str(),record.baseline.as_str()])?;
             tx.execute("DELETE FROM snapshots WHERE workspace_id=?1 AND id<>?2 AND id NOT IN (SELECT baseline FROM sessions) AND id NOT IN (SELECT before_id FROM operations UNION SELECT after_id FROM operations)",params![workspace.as_str(),record.baseline.as_str()])?;
+            candidates.extend(image_candidates);
+            let mut attachment_files=Vec::new();
+            for (id,blob) in attachment_candidates {
+                if tx.execute("DELETE FROM attachments WHERE id=?1 AND NOT EXISTS(SELECT 1 FROM turn_attachments WHERE attachment_id=?1) AND NOT EXISTS(SELECT 1 FROM queue_attachments WHERE attachment_id=?1)",[&id])?>0 {attachment_files.push(id);candidates.push(blob);}
+            }
             let mut removed = Vec::new();
             for id in candidates {
-                if tx.execute("DELETE FROM blobs WHERE id=?1 AND NOT EXISTS(SELECT 1 FROM snapshot_blobs WHERE blob_id=?1)", [&id])? > 0 { removed.push(ContentId::try_from(id).map_err(|_|Error::CorruptMetadata)?); }
+                if tx.execute("DELETE FROM blobs WHERE id=?1 AND NOT EXISTS(SELECT 1 FROM snapshot_blobs WHERE blob_id=?1) AND NOT EXISTS(SELECT 1 FROM turn_images WHERE blob_id=?1) AND NOT EXISTS(SELECT 1 FROM attachments WHERE blob_id=?1)", [&id])? > 0 { removed.push(ContentId::try_from(id).map_err(|_|Error::CorruptMetadata)?); }
             }
-            tx.execute("INSERT INTO deletions(session_id,blobs) VALUES(?1,?2)",params![session.as_str(),serde_json::to_string(&removed).map_err(|_|Error::CorruptMetadata)?])?;
+            tx.execute("INSERT INTO deletions(session_id,blobs,attachment_files) VALUES(?1,?2,?3)",params![session.as_str(),serde_json::to_string(&removed).map_err(|_|Error::CorruptMetadata)?,json(&attachment_files)?])?;
             let new_id = StoreId::try_from(random_id()?).map_err(|_|Error::CorruptMetadata)?;
             tx.execute("UPDATE meta SET store_id=?1 WHERE singleton=1",[new_id.as_str()])?;
             tx.commit()?;
