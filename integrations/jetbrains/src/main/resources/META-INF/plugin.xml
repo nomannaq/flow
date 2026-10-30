@@ -6,14 +6,22 @@
         A native agent workbench for reviewing coding-agent changes.
     ]]></description>
     <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
+    <depends>com.intellij.modules.jcef</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="dev.flow.bridge.ContextStartupActivity" />
+        <notificationGroup id="Flow.CommitGeneration" displayType="BALLOON" isLogByDefault="true" />
         <toolWindow id="Flow"
+                    icon="AllIcons.Toolwindows.ToolWindowAskAI"
                     anchor="right"
                     factoryClass="dev.flow.ui.WorkbenchToolWindowFactory" />
     </extensions>
 
     <actions>
+        <action id="Flow.GenerateCommitMessage" class="dev.flow.ui.GenerateCommitMessageAction" icon="AllIcons.Toolwindows.ToolWindowAskAI" text="Generate Commit Message with Flow" description="Generate an editable message from checked changes using your native agent login">
+            <add-to-group group-id="Vcs.MessageActionGroup" anchor="last"/>
+        </action>
         <action id="Flow.Spikes.HistoricalDiff"
                 class="dev.flow.spikes.HistoricalDiffProbeAction"
                 text="Flow Compatibility: Historical Diffs" />
