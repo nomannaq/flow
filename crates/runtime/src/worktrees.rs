@@ -94,6 +94,7 @@ impl Repository {
 pub enum BaselineChoice {
     CleanCommit(String),
     SelectedOverlay(String, protocol::OverlaySelection),
+    Checkpoint(String, ContentId),
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Stage {
@@ -190,10 +191,18 @@ impl WorktreeManager {
             self.repository_lease.owner.clone(),
         )?;
         validate(&self.repository.root)?;
-        let (commit, overlay) = match choice {
-            BaselineChoice::CleanCommit(commit) => (commit, None),
-            BaselineChoice::SelectedOverlay(commit, selection) => (commit, Some(selection)),
+        let (commit, overlay, checkpoint_id) = match choice {
+            BaselineChoice::CleanCommit(commit) => (commit, None, None),
+            BaselineChoice::SelectedOverlay(commit, selection) => (commit, Some(selection), None),
+            BaselineChoice::Checkpoint(commit, snapshot) => (commit, None, Some(snapshot)),
         };
+        let selected_checkpoint = checkpoint_id
+            .as_ref()
+            .map(|id| self.store.get_snapshot(id.clone()))
+            .transpose()?;
+        if selected_checkpoint.as_ref().is_some_and(|s| !s.manifest.coverage.complete || s.manifest.files.iter().any(|(path,file)| file.kind!=FileKind::Regular || !Path::new(path).components().all(|p| matches!(p,Component::Normal(name) if !name.to_string_lossy().eq_ignore_ascii_case(".git"))))) {
+            return Err(Error::Invalid("rewind requires a complete checkpoint of regular files"));
+        }
         let imported = overlay
             .as_ref()
             .map(|s| crate::local_changes::freeze(&self.repository.root, s))
@@ -298,13 +307,60 @@ impl WorktreeManager {
         if let Some(imported) = imported {
             crate::local_changes::materialize(&path, imported)?;
         }
+        if let Some(snapshot) = &selected_checkpoint {
+            // This is a newly owned worktree with no agent process. Preserve its
+            // Git link; the original session and main project are never touched.
+            self.verify_owned(&record)?;
+            for child in fs::read_dir(&path)? {
+                let child = child?;
+                if child.file_name() == ".git" {
+                    continue;
+                }
+                if child.file_type()?.is_dir() {
+                    fs::remove_dir_all(child.path())?;
+                } else {
+                    fs::remove_file(child.path())?;
+                }
+            }
+            let files = snapshot
+                .manifest
+                .files
+                .clone()
+                .into_iter()
+                .map(|(path, entry)| {
+                    Ok((
+                        path,
+                        Some(FileInput {
+                            bytes: self.store.content_bytes(entry.blob)?,
+                            mode: entry.mode,
+                            kind: entry.kind,
+                        }),
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>>>()?;
+            crate::local_changes::materialize(&path, files)?;
+        }
         // An imported staged .gitignore can hide a separately selected disk
         // file. All materialized bytes still belong to the imported baseline.
-        let files = if overlay.is_some() {
+        let files = if overlay.is_some() || checkpoint_id.is_some() {
             capture_all(&path)?
         } else {
             capture(&path)?
         };
+        if let Some(snapshot) = &selected_checkpoint
+            && (files.len() != snapshot.manifest.files.len()
+                || files.iter().any(|(path, file)| {
+                    snapshot.manifest.files.get(path).is_none_or(|entry| {
+                        ContentId::hash(&file.bytes) != entry.blob
+                            || file.kind != entry.kind
+                            || file.mode != entry.mode
+                    })
+                }))
+        {
+            return Err(Error::Invalid(
+                "restored checkpoint differs from recorded files; inspect retained preparation",
+            ));
+        }
         if source != source_fingerprint(&self.repository.root)? {
             return Err(Error::Unstable);
         }
@@ -321,12 +377,15 @@ impl WorktreeManager {
                 },
                 started_at_ms: record.started_at_ms,
                 completed_at_ms: now()?,
-                provenance: match &overlay {
-                    Some(selection) => format!(
+                provenance: match (&overlay, &checkpoint_id) {
+                    (Some(selection), _) => format!(
                         "B13 selected overlay on {commit}: {}",
                         serde_json::to_string(selection).unwrap()
                     ),
-                    None => format!(
+                    (_, Some(id)) => format!(
+                        "Flow rewind from immutable snapshot {id:?}; original session retained"
+                    ),
+                    _ => format!(
                         "B07 clean commit {commit}; local edits and unsaved buffers excluded"
                     ),
                 },
