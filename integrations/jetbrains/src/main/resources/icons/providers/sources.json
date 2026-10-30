@@ -1,0 +1,27 @@
+{
+  "retrieved": "2026-10-17",
+  "adaptation": "Only intrinsic width/height set to 16 logical pixels; paths, colors, viewBoxes and clear space preserved. Official white OpenAI asset is the IDE dark-theme variant.",
+  "assets": [
+    {
+      "file": "openai.svg",
+      "source": "https://cdn.openai.com/brand/openai-logos.zip",
+      "member": "OpenAI-logos/SVGs/OAI_OpenAI-Blossom_Black.svg",
+      "originalSha256": "75c1e9fffa5e8c437bec1d67197a73992bca45d166c6ff23215185dea8fae92a",
+      "bundledSha256": "dd4ab8f8f87ce4c30d5d416a148f60c41820724533df6fd73095debfb89ffe3e"
+    },
+    {
+      "file": "openai_dark.svg",
+      "source": "https://cdn.openai.com/brand/openai-logos.zip",
+      "member": "OpenAI-logos/SVGs/OAI_OpenAI-Blossom_White.svg",
+      "originalSha256": "01d158767c4eec0e47bd617e67759c33da0accd1438be1a8d29dfdb99ce87285",
+      "bundledSha256": "86d20ffbcf7cd0a4252e007239ce2dc892049b4a334f95f6c6e525d6378932ba"
+    },
+    {
+      "file": "claude.svg",
+      "source": "https://anthropic.com/press-kit",
+      "member": "Anthropic media resources/Anthropic logos/Claude logos/3 Claude Spark/SVG/Claude Spark - Clay.svg",
+      "originalSha256": "6d53db4be375e899c937c26cf16684a80d6e869b1928d72b37748bef2560e219",
+      "bundledSha256": "a84aa2b60c31c777d6637f07d29a3033003bedd9af7be0331b99a259c9727a09"
+    }
+  ]
+}
